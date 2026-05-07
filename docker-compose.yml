@@ -10,25 +10,31 @@ services:
     ports:
       - "8088:80"
     depends_on:
-      - firebase
+      - backend
     restart: always
-    extra_hosts:
-      - "host.docker.internal:192.168.146.160"
 
-  # 服務 2：Firebase 地端模擬器
-  firebase:
+  # 服務 2：Express + Socket.io 後端
+  backend:
     build:
       context: .
-      dockerfile: Dockerfile.firebase
-    container_name: firebase_local_emulator
-    stop_grace_period: 40s
+      dockerfile: Dockerfile.backend
+    container_name: work_tracker_backend
     ports:
-      - "4000:4000"  # Emulator UI
-      - "8181:8181"  # 依照要求改為 8181，避開宿主機 8080 衝突
-      - "9099:9099"  # Auth
-      - "9150:9150"  # Firestore UI WebSocket 資料串流
+      - "3001:3001"
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/worktracker
+    depends_on:
+      - mongo
+    restart: always
+
+  # 服務 3：MongoDB 資料庫
+  mongo:
+    image: mongo:7
+    container_name: work_tracker_mongo
+    ports:
+      - "27017:27017"
     volumes:
-      - ./firebase-data:/app/data
+      - ./mongo-data:/data/db
     restart: always
 
 networks:

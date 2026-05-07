@@ -8,12 +8,7 @@ import {
   Newspaper, HardDrive, CheckCircle as CheckIcon, Tag,
   Link, Image as ImageIcon, Paperclip, ExternalLink, Upload
 } from 'lucide-react';
-import { initializeApp } from 'firebase/app';
-import { 
-  getFirestore, collection, addDoc, onSnapshot, query, updateDoc, 
-  doc, deleteDoc, serverTimestamp, connectFirestoreEmulator 
-} from 'firebase/firestore';
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, connectAuthEmulator } from 'firebase/auth';
+import { io } from 'socket.io-client';
 
 // --- 1. 核心常數定義 ---
 
@@ -171,42 +166,32 @@ const RecurrenceBadgeDisplay = ({ task }) => {
   );
 };
 
-// --- 4. Firebase 初始化 (結合原作者設定與預覽環境相容處理) ---
+// --- 4. Socket.io + REST API 初始化 ---
 
-const firebaseConfig = {
-  apiKey: "AIzaSy" + "LocalDev_ContinuousSync_V56_FixAttachments", 
-  authDomain: "work-tracker-app.firebaseapp.com",
-  projectId: "work-tracker-app", 
-  storageBucket: "work-tracker-app.appspot.com",
-  messagingSenderId: "123456789",
-  appId: "1:123456789:web:abcdef"
-};
+const socket = io();
 
-// 若在預覽環境則套用系統參數，若在一般主機則套用上述原作者配置
-const finalConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : firebaseConfig;
-const app = initializeApp(finalConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+const API_BASE = '/api';
 
-// 確保讀寫資料的路徑指向原本建立的 "work-tracker-app"
-const appId = typeof __app_id !== 'undefined' ? __app_id : "work-tracker-app"; 
+const apiPost = (col, data) =>
+  fetch(`${API_BASE}/${col}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }).then(r => r.json());
 
-const HOST_IP = "192.168.146.160"; 
-// 判斷若非預覽環境，則執行原本的模擬器連線邏輯
-if (typeof window !== 'undefined' && typeof __firebase_config === 'undefined') {
-  const hostname = window.location.hostname;
-  const target = (hostname === 'localhost' || hostname === '127.0.0.1') ? 'localhost' : HOST_IP;
-  try {
-    connectFirestoreEmulator(db, target, 8181);
-    connectAuthEmulator(auth, `http://${target}:9099`);
-    console.log(`[系統] Firebase 模擬器已連線: ${target}:8181`);
-  } catch (e) {}
-}
+const apiPatch = (col, id, data) =>
+  fetch(`${API_BASE}/${col}/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+
+const apiDelete = (col, id) =>
+  fetch(`${API_BASE}/${col}/${id}`, { method: 'DELETE' });
 
 // --- 5. 主應用組件 ---
 
 export default function App() {
-  const [user, setUser] = useState(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [tasks, setTasks] = useState([]);
   const [logs, setLogs] = useState([]);
@@ -282,51 +267,21 @@ export default function App() {
   const [taskForm, setTaskForm] = useState(INITIAL_TASK_FORM);
 
   useEffect(() => {
-    let isMounted = true;
-    const initAuth = async () => {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else if (!auth.currentUser) {
-          await signInAnonymously(auth);
-        }
-      } catch (err) {
-        console.error("Auth initialization failed:", err);
-        if (isMounted) setIsAuthReady(true);
-      }
+    socket.on('tasks:updated', setTasks);
+    socket.on('logs:updated', setLogs);
+    socket.on('groups:updated', setGroups);
+    socket.on('tags:updated', setTags);
+    const onConnect = () => setIsAuthReady(true);
+    socket.on('connect', onConnect);
+    if (socket.connected) setIsAuthReady(true);
+    return () => {
+      socket.off('tasks:updated', setTasks);
+      socket.off('logs:updated', setLogs);
+      socket.off('groups:updated', setGroups);
+      socket.off('tags:updated', setTags);
+      socket.off('connect', onConnect);
     };
-    initAuth();
-    
-    const unsubAuth = onAuthStateChanged(auth, (u) => {
-      if (isMounted) { setUser(u); setIsAuthReady(true); }
-    });
-    return () => { isMounted = false; unsubAuth(); };
   }, []);
-
-  useEffect(() => {
-    if (!isAuthReady || !user) return;
-    try {
-      const unsubTasks = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'tasks'), (s) => {
-        setTasks(s.docs.map(d => ({ id: d.id, ...d.data() })));
-      }, (err) => console.error("Tasks Snapshot Error:", err));
-      
-      const unsubLogs = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'logs'), (s) => {
-        setLogs(s.docs.map(d => ({ id: d.id, ...d.data() })));
-      }, (err) => console.error("Logs Snapshot Error:", err));
-      
-      const unsubGroups = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'groups'), (s) => {
-        setGroups(s.docs.map(d => ({ id: d.id, ...d.data() })));
-      }, (err) => console.error("Groups Snapshot Error:", err));
-      
-      const unsubTags = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'tags'), (s) => {
-        setTags(s.docs.map(d => ({ id: d.id, ...d.data() })));
-      }, (err) => console.error("Tags Snapshot Error:", err));
-      
-      return () => { unsubTasks(); unsubLogs(); unsubGroups(); unsubTags(); };
-    } catch(err) {
-      console.error("Firestore Subscribe Error:", err);
-    }
-  }, [user, isAuthReady]);
 
   const allUniqueAssignees = useMemo(() => {
     const names = new Set();
@@ -390,7 +345,7 @@ export default function App() {
     return tasks.filter(t => {
       const hasRecentLog = logs.some(l => {
         if (l.taskId !== t.id) return false;
-        const logDate = l.timestamp?.toDate ? l.timestamp.toDate() : new Date();
+        const logDate = l.timestamp ? new Date(l.timestamp) : new Date();
         return logDate >= start && logDate <= end;
       });
       const hasRecentChecklist = (t.checklist || []).some(i => {
@@ -456,9 +411,9 @@ export default function App() {
 
       const taskLogs = logs.filter(l => {
         if (l.taskId !== t.id) return false;
-        const logDate = l.timestamp?.toDate ? l.timestamp.toDate() : new Date();
+        const logDate = l.timestamp ? new Date(l.timestamp) : new Date();
         return logDate >= start && logDate <= end;
-      }).sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+      }).sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
 
       const taskChecklistActivity = (t.checklist || []).filter(i => {
         if (!i.completed || !i.actualDoneDate) return false;
@@ -620,7 +575,7 @@ export default function App() {
   const handleAddChecklistItem = async () => {
     setChecklistError("");
     if (!newChecklistItem.trim()) { setChecklistError("請輸入內容"); return; }
-    if (!selectedTaskId || !user) return;
+    if (!selectedTaskId) return;
     const task = tasks.find(x => x.id === selectedTaskId);
     if (!task) return;
     try {
@@ -636,8 +591,8 @@ export default function App() {
         newList = [...(task.checklist || []), newItem];
       }
       const progress = newList.length > 0 ? Math.round((newList.filter(i => i.completed).length / newList.length) * 100) : 0;
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', task.id), { checklist: newList, progress: progress, updatedAt: serverTimestamp() });
-      setNewChecklistItem(""); 
+      await apiPatch('tasks', task.id, { checklist: newList, progress });
+      setNewChecklistItem("");
       setEditingChecklistId(null);
     } catch (err) { setChecklistError("存儲失敗"); }
   };
@@ -656,12 +611,9 @@ export default function App() {
     compressImage(file, async (dataUrl) => {
       const newAttachment = { id: Date.now(), type: 'image', url: dataUrl, name: file.name };
       const updatedAttachments = [...currentAttachments, newAttachment];
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', taskId), {
-        attachments: updatedAttachments,
-        updatedAt: serverTimestamp()
-      });
+      await apiPatch('tasks', taskId, { attachments: updatedAttachments });
     });
-    e.target.value = ''; 
+    e.target.value = '';
   };
 
   const handleDetailAddLink = async (taskId, currentAttachments = []) => {
@@ -672,20 +624,14 @@ export default function App() {
     }
     const newAttachment = { id: Date.now(), type: 'link', url: finalUrl, name: detailLinkName.trim() || finalUrl };
     const updatedAttachments = [...currentAttachments, newAttachment];
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', taskId), {
-      attachments: updatedAttachments,
-      updatedAt: serverTimestamp()
-    });
-    setDetailLinkName(""); 
+    await apiPatch('tasks', taskId, { attachments: updatedAttachments });
+    setDetailLinkName("");
     setDetailLinkUrl("");
   };
 
   const handleDetailDeleteAttachment = async (taskId, currentAttachments = [], attachmentId) => {
     const updatedAttachments = currentAttachments.filter(a => a.id !== attachmentId);
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', taskId), {
-      attachments: updatedAttachments,
-      updatedAt: serverTimestamp()
-    });
+    await apiPatch('tasks', taskId, { attachments: updatedAttachments });
   };
 
   const handleSaveTask = async (e) => {
@@ -696,14 +642,13 @@ export default function App() {
     if (!taskForm.title.trim()) { setFormError("請輸入工作標題"); return; }
     if (!taskForm.group) { setFormError("請選擇執行小組"); return; }
     if (!taskForm.assignee || taskForm.assignee.length === 0) { setFormError("請新增至少一位負責人員"); return; }
-    if (!user) { setFormError("尚未取得連線授權"); return; }
 
     setIsSubmittingTask(true);
     try {
-      if (editingTaskId) { 
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', editingTaskId), { ...taskForm, updatedAt: serverTimestamp() }); 
-      } else { 
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'tasks'), { ...taskForm, progress: 0, checklist: [], createdAt: serverTimestamp(), updatedAt: serverTimestamp() }); 
+      if (editingTaskId) {
+        await apiPatch('tasks', editingTaskId, { ...taskForm });
+      } else {
+        await apiPost('tasks', { ...taskForm, progress: 0, checklist: [] });
       }
       setIsTaskModalOpen(false); 
       setEditingTaskId(null); 
@@ -719,24 +664,22 @@ export default function App() {
 
   const handleSaveGroup = async (e) => {
     if (e) e.preventDefault();
-    if (!newGroupName.trim() || !user) return;
+    if (!newGroupName.trim()) return;
     setIsSavingGroup(true);
-    try { 
+    try {
       if (editingGroupId) {
         const oldGroup = groups.find(g => g.id === editingGroupId);
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'groups', editingGroupId), { name: newGroupName, color: newGroupColor });
-        
+        await apiPatch('groups', editingGroupId, { name: newGroupName, color: newGroupColor });
         if (oldGroup && oldGroup.name !== newGroupName) {
-          const tasksToUpdate = tasks.filter(t => t.group === oldGroup.name);
-          for (const t of tasksToUpdate) {
-            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', t.id), { group: newGroupName, updatedAt: serverTimestamp() });
+          for (const t of tasks.filter(t => t.group === oldGroup.name)) {
+            await apiPatch('tasks', t.id, { group: newGroupName });
           }
         }
         setEditingGroupId(null);
       } else {
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'groups'), { name: newGroupName, color: newGroupColor }); 
+        await apiPost('groups', { name: newGroupName, color: newGroupColor });
       }
-      setNewGroupName(""); 
+      setNewGroupName("");
       setNewGroupColor(GROUP_COLOR_OPTIONS[0]);
     } catch (err) {
       console.error(err);
@@ -744,18 +687,12 @@ export default function App() {
   };
 
   const handleDeleteGroup = async (groupId, groupName) => {
-    if (!user) return;
     try {
-      const tasksToUpdate = tasks.filter(t => t.group === groupName);
-      for (const t of tasksToUpdate) {
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', t.id), { group: "", updatedAt: serverTimestamp() });
+      for (const t of tasks.filter(t => t.group === groupName)) {
+        await apiPatch('tasks', t.id, { group: "" });
       }
-      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'groups', groupId));
-
-      if (editingGroupId === groupId) {
-        setEditingGroupId(null);
-        setNewGroupName("");
-      }
+      await apiDelete('groups', groupId);
+      if (editingGroupId === groupId) { setEditingGroupId(null); setNewGroupName(""); }
     } catch (e) {
       console.error(e);
     }
@@ -763,25 +700,22 @@ export default function App() {
 
   const handleSaveTag = async (e) => {
     if (e) e.preventDefault();
-    if (!newTagName.trim() || !user) return;
+    if (!newTagName.trim()) return;
     setIsSavingTag(true);
-    try { 
+    try {
       if (editingTagId) {
         const oldTag = tags.find(t => t.id === editingTagId);
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tags', editingTagId), { name: newTagName, color: newTagColor });
-        
+        await apiPatch('tags', editingTagId, { name: newTagName, color: newTagColor });
         if (oldTag && oldTag.name !== newTagName) {
-          const tasksToUpdate = tasks.filter(t => (t.tags || []).includes(oldTag.name));
-          for (const t of tasksToUpdate) {
-            const newTags = t.tags.map(tagName => tagName === oldTag.name ? newTagName : tagName);
-            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', t.id), { tags: newTags, updatedAt: serverTimestamp() });
+          for (const t of tasks.filter(t => (t.tags || []).includes(oldTag.name))) {
+            await apiPatch('tasks', t.id, { tags: t.tags.map(n => n === oldTag.name ? newTagName : n) });
           }
         }
         setEditingTagId(null);
       } else {
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'tags'), { name: newTagName, color: newTagColor }); 
+        await apiPost('tags', { name: newTagName, color: newTagColor });
       }
-      setNewTagName(""); 
+      setNewTagName("");
       setNewTagColor(TAG_COLOR_OPTIONS[0]);
     } catch (err) {
       console.error(err);
@@ -789,29 +723,21 @@ export default function App() {
   };
 
   const handleDeleteTag = async (tagId, tagName) => {
-    if (!user) return;
     try {
-      const tasksToUpdate = tasks.filter(t => (t.tags || []).includes(tagName));
-      for (const t of tasksToUpdate) {
-        const newTags = t.tags.filter(name => name !== tagName);
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', t.id), { tags: newTags, updatedAt: serverTimestamp() });
+      for (const t of tasks.filter(t => (t.tags || []).includes(tagName))) {
+        await apiPatch('tasks', t.id, { tags: t.tags.filter(n => n !== tagName) });
       }
-      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tags', tagId));
-
-      if (editingTagId === tagId) {
-        setEditingTagId(null);
-        setNewTagName("");
-      }
+      await apiDelete('tags', tagId);
+      if (editingTagId === tagId) { setEditingTagId(null); setNewTagName(""); }
     } catch (e) {
       console.error(e);
     }
   };
 
   const executeRecurrence = async (task) => {
-    if (!user) return;
     setIsRecurProcessing(true);
     try {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', task.id), { progress: 100, updatedAt: serverTimestamp() });
+      await apiPatch('tasks', task.id, { progress: 100 });
       const interval = parseInt(task.recurrenceInterval || 1);
       const type = task.recurrenceType || 'weekly';
       const shiftDate = (dStr) => {
@@ -822,36 +748,34 @@ export default function App() {
         return formatDate(d);
       };
       const nextChecklist = (task.checklist || []).map(item => ({
-        ...item, id: Date.now() + Math.random(), completed: false, actualDoneDate: null, 
+        ...item, id: Date.now() + Math.random(), completed: false, actualDoneDate: null,
         startDate: shiftDate(item.startDate || item.dueDate), dueDate: shiftDate(item.dueDate)
       }));
-      // 新一期循環建立時，保留附檔與標籤
-      const { id, createdAt, updatedAt, ...cleanData } = task;
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'tasks'), {
-        ...cleanData, progress: 0, startDate: shiftDate(task.startDate), endDate: shiftDate(task.endDate), checklist: nextChecklist, createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+      const { id, createdAt, updatedAt, _id, __v, ...cleanData } = task;
+      await apiPost('tasks', {
+        ...cleanData, progress: 0, startDate: shiftDate(task.startDate), endDate: shiftDate(task.endDate), checklist: nextChecklist
       });
       setShowRecurConfirm(false); setSelectedTaskId(null);
     } catch (err) { } finally { setIsRecurProcessing(false); }
   };
 
   const handleSendLog = async () => {
-    if (!newLogText.trim() || !selectedTaskId || !user) return;
-    try { 
+    if (!newLogText.trim() || !selectedTaskId) return;
+    try {
       if (editingLogId) {
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs', editingLogId), { text: String(newLogText), updatedAt: serverTimestamp() });
+        await apiPatch('logs', editingLogId, { text: String(newLogText) });
         setEditingLogId(null);
       } else {
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs'), { taskId: selectedTaskId, text: String(newLogText), userName: "User", timestamp: serverTimestamp() }); 
+        await apiPost('logs', { taskId: selectedTaskId, text: String(newLogText), userName: "User", timestamp: new Date().toISOString() });
       }
-      setNewLogText(""); 
+      setNewLogText("");
     } catch (e) { console.error("[系統] 日誌失敗:", e.message); }
   };
 
   const handleEditLog = (log) => { setEditingLogId(log.id); setNewLogText(log.text); };
-  
+
   const handleDeleteLog = async (logId) => {
-    if (!user) return;
-    try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs', logId)); if (editingLogId === logId) { setEditingLogId(null); setNewLogText(""); } } 
+    try { await apiDelete('logs', logId); if (editingLogId === logId) { setEditingLogId(null); setNewLogText(""); } }
     catch (e) { console.error("[系統] 日誌刪除失敗:", e.message); }
   };
 
@@ -1272,7 +1196,7 @@ export default function App() {
                                      <div key={l.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:bg-indigo-400 before:rounded-l-xl overflow-hidden">
                                        <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed font-medium">{String(l.text)}</p>
                                        <div className="mt-2 flex items-center gap-1 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                         <Clock className="w-3 h-3" /> {l.timestamp?.toDate ? formatFullDateTime(l.timestamp.toDate()) : '傳送中'}
+                                         <Clock className="w-3 h-3" /> {l.timestamp ? formatFullDateTime(new Date(l.timestamp)) : '傳送中'}
                                        </div>
                                      </div>
                                    ))}
@@ -1333,7 +1257,7 @@ export default function App() {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   const newTags = currentTaskInMemo.tags.filter(name => name !== tName);
-                                  updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', currentTaskInMemo.id), { tags: newTags, updatedAt: serverTimestamp() });
+                                  apiPatch('tasks', currentTaskInMemo.id, { tags: newTags });
                                 }}
                                 className="hover:text-rose-500 transition-colors opacity-50 hover:opacity-100 p-0.5 ml-0.5 bg-white/50 hover:bg-white rounded-full"
                                 title="從此任務中移除標籤"
@@ -1438,7 +1362,7 @@ export default function App() {
                     <button onClick={() => {
                       const newList = currentTaskInMemo.checklist.map(i => i.id === item.id ? { ...i, completed: !i.completed, actualDoneDate: !i.completed ? formatFullDateTime(new Date()) : null } : i);
                       const progress = newList.length > 0 ? Math.round((newList.filter(i => i.completed).length / newList.length) * 100) : 0;
-                      updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', currentTaskInMemo.id), { checklist: newList, progress, updatedAt: serverTimestamp() });
+                      apiPatch('tasks', currentTaskInMemo.id, { checklist: newList, progress });
                     }} className="shrink-0 active:scale-75 transition-transform">{item.completed ? <CheckCircle2 className="w-8 h-8 text-emerald-500 fill-emerald-50" /> : <Square className="w-8 h-8 text-slate-300" />}</button>
                     <div className="flex flex-col flex-1">
                       <span className={`text-base font-bold ${item.completed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{String(item.text)}</span>
@@ -1456,7 +1380,7 @@ export default function App() {
                       <button onClick={() => {
                         const newList = currentTaskInMemo.checklist.filter(i => i.id !== item.id);
                         const progress = newList.length > 0 ? Math.round((newList.filter(i => i.completed).length / newList.length) * 100) : 0;
-                        updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', currentTaskInMemo.id), { checklist: newList, progress, updatedAt: serverTimestamp() });
+                        apiPatch('tasks', currentTaskInMemo.id, { checklist: newList, progress });
                       }} className="hover:text-rose-500 p-2.5 transition-all" title="刪除項目"><X className="w-5 h-5" /></button>
                     </div>
                   </div>
@@ -1479,7 +1403,7 @@ export default function App() {
 
             <div className="w-full md:w-[420px] bg-slate-50/50 flex flex-col p-10 overflow-hidden border-l border-slate-100 shadow-inner">
                <h4 className="text-lg font-black mb-8 flex items-center gap-3 tracking-tight"><MessageSquare className="w-6 h-6 text-indigo-400" /> 進度日誌</h4>
-               <div className="flex-1 overflow-y-auto space-y-5 mb-8 scrollbar-thin">{logs.filter(l => l.taskId === currentTaskInMemo.id).sort((a,b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)).map(log => (<div key={log.id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 group/log relative shadow-slate-200/40"><p className="text-sm text-slate-600 leading-relaxed font-medium whitespace-pre-wrap">{String(log.text)}</p><div className="flex items-center justify-between mt-3"><span className="text-xs font-bold text-slate-300 uppercase tracking-widest">{log.timestamp?.toDate ? log.timestamp.toDate().toLocaleDateString() : '傳送中'}{log.updatedAt && " (已編輯)"}</span><div className="flex items-center gap-2"><button onClick={() => handleEditLog(log)} className="opacity-0 group-hover/log:opacity-100 p-1.5 text-slate-300 hover:text-indigo-600 transition-all"><Pencil className="w-4 h-4" /></button><button onClick={() => handleDeleteLog(log.id)} className="opacity-0 group-hover/log:opacity-100 p-1.5 text-slate-300 hover:text-rose-500 transition-all"><Trash2 className="w-4 h-4" /></button></div></div></div>))}</div>
+               <div className="flex-1 overflow-y-auto space-y-5 mb-8 scrollbar-thin">{logs.filter(l => l.taskId === currentTaskInMemo.id).sort((a,b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0)).map(log => (<div key={log.id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 group/log relative shadow-slate-200/40"><p className="text-sm text-slate-600 leading-relaxed font-medium whitespace-pre-wrap">{String(log.text)}</p><div className="flex items-center justify-between mt-3"><span className="text-xs font-bold text-slate-300 uppercase tracking-widest">{log.timestamp ? new Date(log.timestamp).toLocaleDateString() : '傳送中'}{log.updatedAt && " (已編輯)"}</span><div className="flex items-center gap-2"><button onClick={() => handleEditLog(log)} className="opacity-0 group-hover/log:opacity-100 p-1.5 text-slate-300 hover:text-indigo-600 transition-all"><Pencil className="w-4 h-4" /></button><button onClick={() => handleDeleteLog(log.id)} className="opacity-0 group-hover/log:opacity-100 p-1.5 text-slate-300 hover:text-rose-500 transition-all"><Trash2 className="w-4 h-4" /></button></div></div></div>))}</div>
                <div className={`flex flex-col gap-3 p-3 bg-white rounded-2xl border ${editingLogId ? 'border-indigo-400 ring-4 ring-indigo-50 shadow-lg' : 'border-slate-200 shadow-sm'}`}>{editingLogId && (<div className="flex items-center justify-between px-3 py-1.5 bg-indigo-50 rounded-lg"><span className="text-xs font-black text-indigo-600 uppercase">正在編輯日誌...</span><button onClick={() => { setEditingLogId(null); setNewLogText(""); }} className="text-indigo-400 hover:text-rose-500"><X className="w-3 h-3" /></button></div>)}<div className="flex gap-3"><textarea rows="2" placeholder="撰寫回報..." className="flex-1 px-4 py-3 bg-transparent text-sm font-bold outline-none resize-none" value={newLogText} onChange={e => setNewLogText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendLog(); }}}></textarea><button onClick={handleSendLog} className={`px-5 rounded-xl active:scale-90 transition-all shadow-lg self-end mb-1 mr-1 py-4 ${editingLogId ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-white'}`}>{editingLogId ? <CheckIcon className="w-6 h-6" /> : <Send className="w-6 h-6" />}</button></div></div>
             </div>
           </div>
@@ -1640,7 +1564,7 @@ export default function App() {
                   </div>
                 )}
               </div>
-              <button disabled={isSubmittingTask || !user} type="submit" className={`w-full font-black py-6 rounded-[1.5rem] shadow-xl active:scale-95 transition-all text-lg ${!user ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-100'}`}>{isSubmittingTask ? <Loader2 className="w-6 h-6 animate-spin mx-auto" /> : (editingTaskId ? "確認修改" : "確認任務")}</button>
+              <button disabled={isSubmittingTask} type="submit" className="w-full font-black py-6 rounded-[1.5rem] shadow-xl active:scale-95 transition-all text-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-100 disabled:bg-slate-300 disabled:shadow-none">{isSubmittingTask ? <Loader2 className="w-6 h-6 animate-spin mx-auto" /> : (editingTaskId ? "確認修改" : "確認任務")}</button>
             </form>
           </div>
         </div>
@@ -1690,7 +1614,7 @@ export default function App() {
                       取消
                     </button>
                   )}
-                  <button disabled={isSavingTag || !user || !newTagName.trim()} type="submit" className="flex-1 bg-slate-900 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 flex items-center justify-center gap-2 disabled:bg-slate-300 disabled:shadow-none">
+                  <button disabled={isSavingTag || !newTagName.trim()} type="submit" className="flex-1 bg-slate-900 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 flex items-center justify-center gap-2 disabled:bg-slate-300 disabled:shadow-none">
                     {isSavingTag ? <Loader2 className="w-4 h-4 animate-spin" /> : (editingTagId ? "儲存修改" : "新增標籤")}
                   </button>
                 </div>
@@ -1744,7 +1668,7 @@ export default function App() {
                       取消
                     </button>
                   )}
-                  <button disabled={isSavingGroup || !user || !newGroupName.trim()} type="submit" className="flex-1 bg-slate-900 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 flex items-center justify-center gap-2 disabled:bg-slate-300 disabled:shadow-none">
+                  <button disabled={isSavingGroup || !newGroupName.trim()} type="submit" className="flex-1 bg-slate-900 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 flex items-center justify-center gap-2 disabled:bg-slate-300 disabled:shadow-none">
                     {isSavingGroup ? <Loader2 className="w-4 h-4 animate-spin" /> : (editingGroupId ? "儲存修改" : "新增小組成員")}
                   </button>
                 </div>
@@ -1757,7 +1681,7 @@ export default function App() {
       {/* 刪除任務確認 */}
       {taskToDelete && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-all" onClick={() => setTaskToDelete(null)}>
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 shadow-slate-900/50" onClick={(e) => e.stopPropagation()}><div className="p-8 text-center"><div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-4 border border-rose-100"><AlertTriangle className="w-8 h-8" /></div><h3 className="text-xl font-black text-slate-900 mb-2 tracking-tight">確定要刪除嗎？</h3><p className="text-sm font-bold text-slate-400 px-4">「{taskToDelete.title}」<br/>刪除後將無法恢復。</p></div><div className="p-6 bg-slate-50 flex gap-3"><button onClick={() => setTaskToDelete(null)} className="flex-1 py-3 rounded-xl font-black text-slate-500 bg-white border border-slate-200 transition-all hover:bg-slate-100">取消</button><button onClick={() => { deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', taskToDelete.id)); setTaskToDelete(null); }} className="flex-1 py-3 rounded-xl font-black text-white bg-rose-500 transition-all active:scale-95 shadow-lg shadow-rose-200">確認刪除</button></div></div>
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 shadow-slate-900/50" onClick={(e) => e.stopPropagation()}><div className="p-8 text-center"><div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-4 border border-rose-100"><AlertTriangle className="w-8 h-8" /></div><h3 className="text-xl font-black text-slate-900 mb-2 tracking-tight">確定要刪除嗎？</h3><p className="text-sm font-bold text-slate-400 px-4">「{taskToDelete.title}」<br/>刪除後將無法恢復。</p></div><div className="p-6 bg-slate-50 flex gap-3"><button onClick={() => setTaskToDelete(null)} className="flex-1 py-3 rounded-xl font-black text-slate-500 bg-white border border-slate-200 transition-all hover:bg-slate-100">取消</button><button onClick={() => { apiDelete('tasks', taskToDelete.id); logs.filter(l => l.taskId === taskToDelete.id).forEach(l => apiDelete('logs', l.id)); setTaskToDelete(null); }} className="flex-1 py-3 rounded-xl font-black text-white bg-rose-500 transition-all active:scale-95 shadow-lg shadow-rose-200">確認刪除</button></div></div>
         </div>
       )}
 
