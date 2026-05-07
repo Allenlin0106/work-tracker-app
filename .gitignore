@@ -8,10 +8,17 @@ dist/
 # 資料持久化（不應進版本控制）
 mongo-data/
 
-# 環境變數
+# 環境變數（.env.example 進 git；其餘不進）
 .env
 .env.local
 .env.*.local
+
+# SSL 憑證金鑰（不進 git）
+certs/server.key
+certs/server.crt
+
+# 備份目錄
+backups/
 
 # 編輯器
 .vscode/

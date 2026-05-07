@@ -168,31 +168,39 @@ const RecurrenceBadgeDisplay = ({ task }) => {
 
 // --- 4. Socket.io + REST API 初始化 ---
 
-const socket = io();
+const socket = io({ autoConnect: false });
 
 const API_BASE = '/api';
+const getToken = () => localStorage.getItem('wt_token');
 
 const apiPost = (col, data) =>
   fetch(`${API_BASE}/${col}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
     body: JSON.stringify(data),
   }).then(r => r.json());
 
 const apiPatch = (col, id, data) =>
   fetch(`${API_BASE}/${col}/${id}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
     body: JSON.stringify(data),
   });
 
 const apiDelete = (col, id) =>
-  fetch(`${API_BASE}/${col}/${id}`, { method: 'DELETE' });
+  fetch(`${API_BASE}/${col}/${id}`, {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${getToken()}` },
+  });
 
 // --- 5. 主應用組件 ---
 
 export default function App() {
-  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [authState, setAuthState] = useState(() => localStorage.getItem('wt_token') ? 'loading' : 'check');
+  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
+  const [loginError, setLoginError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [currentUsername, setCurrentUsername] = useState(() => localStorage.getItem('wt_username') || '');
   const [tasks, setTasks] = useState([]);
   const [logs, setLogs] = useState([]);
   const [groups, setGroups] = useState([]);
@@ -267,21 +275,105 @@ export default function App() {
   const [taskForm, setTaskForm] = useState(INITIAL_TASK_FORM);
 
   useEffect(() => {
+    const onConnect = () => setAuthState('ready');
+    const onConnectError = (err) => {
+      if (err.message === 'unauthorized') {
+        localStorage.removeItem('wt_token');
+        localStorage.removeItem('wt_username');
+        setCurrentUsername('');
+        setAuthState('login');
+      }
+    };
+
     socket.on('tasks:updated', setTasks);
     socket.on('logs:updated', setLogs);
     socket.on('groups:updated', setGroups);
     socket.on('tags:updated', setTags);
-    const onConnect = () => setIsAuthReady(true);
     socket.on('connect', onConnect);
-    if (socket.connected) setIsAuthReady(true);
+    socket.on('connect_error', onConnectError);
+
+    const token = localStorage.getItem('wt_token');
+    if (token) {
+      socket.auth = { token };
+      socket.connect();
+    } else {
+      fetch('/api/auth/status')
+        .then(r => r.json())
+        .then(data => setAuthState(data.needsSetup ? 'setup' : 'login'))
+        .catch(() => setAuthState('login'));
+    }
+
     return () => {
       socket.off('tasks:updated', setTasks);
       socket.off('logs:updated', setLogs);
       socket.off('groups:updated', setGroups);
       socket.off('tags:updated', setTags);
       socket.off('connect', onConnect);
+      socket.off('connect_error', onConnectError);
     };
   }, []);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setIsLoggingIn(true);
+    setLoginError('');
+    try {
+      const r = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(loginForm),
+      });
+      const data = await r.json();
+      if (!r.ok) { setLoginError(data.error || '登入失敗'); return; }
+      localStorage.setItem('wt_token', data.token);
+      localStorage.setItem('wt_username', data.username);
+      setCurrentUsername(data.username);
+      socket.auth = { token: data.token };
+      socket.connect();
+      setAuthState('loading');
+    } catch {
+      setLoginError('網路錯誤，請重試');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleSetup = async (e) => {
+    e.preventDefault();
+    setIsLoggingIn(true);
+    setLoginError('');
+    try {
+      const r = await fetch('/api/auth/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(loginForm),
+      });
+      const data = await r.json();
+      if (!r.ok) { setLoginError(data.error || '建立失敗'); return; }
+      localStorage.setItem('wt_token', data.token);
+      localStorage.setItem('wt_username', data.username);
+      setCurrentUsername(data.username);
+      socket.auth = { token: data.token };
+      socket.connect();
+      setAuthState('loading');
+    } catch {
+      setLoginError('網路錯誤，請重試');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('wt_token');
+    localStorage.removeItem('wt_username');
+    socket.disconnect();
+    setAuthState('login');
+    setCurrentUsername('');
+    setTasks([]);
+    setLogs([]);
+    setGroups([]);
+    setTags([]);
+  };
 
   const allUniqueAssignees = useMemo(() => {
     const names = new Set();
@@ -807,7 +899,62 @@ export default function App() {
     if (currentTaskInMemo && currentTaskInMemo.progress >= 100 && currentTaskInMemo.isRecurring) { setShowRecurConfirm(true); } else { setShowRecurConfirm(false); }
   }, [selectedTaskId, currentTaskInMemo?.progress]);
 
-  if (!isAuthReady) return <div className="h-screen flex items-center justify-center bg-slate-50 font-black text-indigo-600"><Loader2 className="animate-spin mr-3" />安全連線初始化中...</div>;
+  if (authState !== 'ready') {
+    if (authState === 'loading' || authState === 'check') return (
+      <div className="h-screen flex items-center justify-center bg-slate-50 font-black text-indigo-600">
+        <Loader2 className="animate-spin mr-3" />安全連線初始化中...
+      </div>
+    );
+    const isSetup = authState === 'setup';
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-100 to-indigo-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-14 h-14 bg-indigo-600 rounded-2xl mb-4 shadow-lg">
+              <LayoutDashboard className="w-7 h-7 text-white" />
+            </div>
+            <h1 className="text-2xl font-black text-slate-800">Progress Hub</h1>
+            <p className="text-slate-500 text-sm mt-1">{isSetup ? '首次使用，請建立管理員帳號' : '請登入以繼續'}</p>
+          </div>
+          {loginError && (
+            <div className="mb-5 p-3 bg-red-50 text-red-600 text-sm rounded-xl border border-red-100">{loginError}</div>
+          )}
+          <form onSubmit={isSetup ? handleSetup : handleLogin}>
+            <div className="mb-4">
+              <label className="block text-sm font-bold text-slate-700 mb-1.5">帳號</label>
+              <input
+                type="text"
+                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                value={loginForm.username}
+                onChange={e => setLoginForm(f => ({ ...f, username: e.target.value }))}
+                autoFocus
+                required
+              />
+            </div>
+            <div className="mb-6">
+              <label className="block text-sm font-bold text-slate-700 mb-1.5">密碼</label>
+              <input
+                type="password"
+                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                value={loginForm.password}
+                onChange={e => setLoginForm(f => ({ ...f, password: e.target.value }))}
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={isLoggingIn}
+              className="w-full bg-indigo-600 text-white rounded-xl py-2.5 text-sm font-bold hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              {isLoggingIn
+                ? <><Loader2 className="w-4 h-4 animate-spin" />{isSetup ? '建立中...' : '登入中...'}</>
+                : (isSetup ? '建立帳號' : '登入')}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-900">
@@ -834,6 +981,9 @@ export default function App() {
             setAssigneeInput("");
             setIsTaskModalOpen(true); 
           }} className="bg-slate-900 text-white px-6 py-2.5 rounded-xl text-base font-bold shadow-lg flex items-center gap-2 active:scale-95 transition-all"><Plus className="w-5 h-5" />建立任務</button>
+          <button onClick={handleLogout} title="登出" className="flex items-center gap-1.5 text-slate-500 hover:text-red-500 hover:bg-red-50 transition-colors px-3 py-2 rounded-xl text-sm font-bold">
+            <User className="w-4 h-4" />{currentUsername}
+          </button>
         </div>
       </header>
 
