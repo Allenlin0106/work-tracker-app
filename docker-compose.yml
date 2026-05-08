@@ -1,5 +1,5 @@
 services:
-  # 服務 1：React 前端平台
+  # 前端：React (Vite) 建置 + Nginx 反向代理
   app:
     build:
       context: .
@@ -10,34 +10,11 @@ services:
       - "8089:80"
     volumes:
       - ./certs:/etc/nginx/certs:ro
-    depends_on:
-      - backend
     restart: always
 
-  # 服務 2：Express + Socket.io 後端（連線至外部 SQL Server）
-  backend:
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
-    container_name: work_tracker_backend
-    secrets:
-      - encryption_key
-    environment:
-      - ENCRYPTED_SQL_PASSWORD=${ENCRYPTED_SQL_PASSWORD}
-      - ENCRYPTED_JWT_SECRET=${ENCRYPTED_JWT_SECRET}
-      - SQL_SERVER=${SQL_SERVER}
-      - SQL_PORT=${SQL_PORT:-1433}
-      - SQL_DATABASE=${SQL_DATABASE}
-      - SQL_USER=${SQL_USER}
-      - SQL_ENCRYPT=${SQL_ENCRYPT:-false}
-      - SQL_TRUST_CERT=${SQL_TRUST_CERT:-true}
-      - CORS_ORIGIN=${CORS_ORIGIN}
-    restart: always
-
-# 加密金鑰以 Docker Compose secrets bind-mount 進容器，不出現在 docker inspect Env 欄位
-secrets:
-  encryption_key:
-    file: ./secrets/encryption_key.txt
+# 注意：ASP.NET Core 後端（backend/WorkTracker/）目前以 IIS Express 本機開發。
+# 正式部署時請另行建立 Dockerfile（FROM mcr.microsoft.com/dotnet/aspnet:8.0）
+# 並將 backend 服務加回此檔案，同時調整 nginx.conf proxy_pass 目標。
 
 networks:
   default:

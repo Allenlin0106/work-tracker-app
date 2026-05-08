@@ -1,11 +1,10 @@
 # 依賴套件
 node_modules/
-server/node_modules/
 
 # 建置輸出
 dist/
 
-# 環境變數（.env.example 進 git；其餘不進）
+# 環境變數（不進 git）
 .env
 .env.local
 .env.*.local
@@ -26,8 +25,11 @@ backups/
 *.suo
 *.ntvs*
 *.njsproj
-*.sln
 *.sw?
+
+# .NET 建置產出
+backend/WorkTracker/bin/
+backend/WorkTracker/obj/
 
 # 系統
 .DS_Store

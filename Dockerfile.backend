@@ -1,9 +1,0 @@
-FROM node:20-alpine
-WORKDIR /app
-RUN addgroup -g 1001 nodejs && adduser -S nodejs -u 1001
-COPY server/package*.json ./
-RUN npm install --omit=dev
-COPY server/ .
-USER nodejs
-EXPOSE 3001
-CMD ["node", "index.js"]
