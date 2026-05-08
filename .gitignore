@@ -14,6 +14,9 @@ dist/
 certs/server.key
 certs/server.crt
 
+# AES 加密金鑰與 secrets 目錄（不進 git）
+secrets/*.txt
+
 # 備份目錄
 backups/
 

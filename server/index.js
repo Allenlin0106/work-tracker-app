@@ -5,12 +5,50 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const sql = require('mssql');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+
+// --- 啟動時解密敏感憑證 ---
+
+const readFile = (filePath) => {
+  try { return fs.readFileSync(filePath, 'utf8').trim(); } catch { return null; }
+};
+
+const decrypt = (base64Cipher, keyHex) => {
+  const data = Buffer.from(base64Cipher, 'base64');
+  const iv = data.slice(0, 16);
+  const encrypted = data.slice(16);
+  const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(keyHex, 'hex'), iv);
+  return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
+};
+
+// 加密金鑰：優先讀 Docker secret 掛載路徑，fallback 本機 secrets/ 目錄
+const ENC_KEY =
+  readFile('/run/secrets/encryption_key') ||
+  readFile(path.join(__dirname, '..', 'secrets', 'encryption_key.txt'));
+
+if (!ENC_KEY) {
+  console.error('[ERROR] 找不到加密金鑰，請確認 secrets/encryption_key.txt 存在');
+  process.exit(1);
+}
+
+// 解密敏感憑證（有 ENCRYPTED_* 時解密；否則直接用明文 env var，供本機開發 fallback）
+const SQL_PASSWORD_PLAIN = process.env.ENCRYPTED_SQL_PASSWORD
+  ? decrypt(process.env.ENCRYPTED_SQL_PASSWORD, ENC_KEY)
+  : process.env.SQL_PASSWORD;
+
+const JWT_SECRET_PLAIN = process.env.ENCRYPTED_JWT_SECRET
+  ? decrypt(process.env.ENCRYPTED_JWT_SECRET, ENC_KEY)
+  : (process.env.JWT_SECRET || 'dev-secret-change-in-production');
+
+// --- App 初始化 ---
 
 const app = express();
 const server = http.createServer(app);
 
 const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:8088';
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
+const JWT_SECRET = JWT_SECRET_PLAIN;
 
 const io = new Server(server, {
   cors: { origin: CORS_ORIGIN, methods: ['GET', 'POST'] }
@@ -25,7 +63,7 @@ const dbConfig = {
   server: process.env.SQL_SERVER || 'localhost',
   port: parseInt(process.env.SQL_PORT) || 1433,
   user: process.env.SQL_USER,
-  password: process.env.SQL_PASSWORD,
+  password: SQL_PASSWORD_PLAIN,
   database: process.env.SQL_DATABASE || 'worktracker',
   options: {
     encrypt: process.env.SQL_ENCRYPT === 'true',
