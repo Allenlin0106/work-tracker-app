@@ -96,7 +96,16 @@ var app = builder.Build();
 
 // ── 7. 資料庫初始化（等 DB 連線成功再開 HTTP，對應 Node.js initDb()）─────────
 
-await app.Services.GetRequiredService<DbService>().InitAsync();
+try
+{
+    await app.Services.GetRequiredService<DbService>().InitAsync();
+}
+catch (Exception ex)
+{
+    Console.Error.WriteLine($"[DB] 連線失敗：{ex.Message}");
+    Console.Error.WriteLine("[DB] 請確認 appsettings.Development.json 中的 SqlServer / SqlUser / SqlPassword 設定正確。");
+    Environment.Exit(1);
+}
 
 // ── 8. 中介層管線 ──────────────────────────────────────────────────────────────
 

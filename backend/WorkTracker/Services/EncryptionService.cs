@@ -12,7 +12,7 @@ public class EncryptionService
         _keyHex =
             ReadFile("/run/secrets/encryption_key") ??
             ReadFile(Path.Combine(AppContext.BaseDirectory,
-                "..", "..", "..", "..", "secrets", "encryption_key.txt"));
+                "..", "..", "..", "..", "..", "secrets", "encryption_key.txt"));
     }
 
     // Returns the decrypted value when `encrypted` is set, otherwise returns `plaintext`.
