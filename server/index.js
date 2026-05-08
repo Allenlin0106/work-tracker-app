@@ -2,6 +2,8 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const sql = require('mssql');
@@ -54,8 +56,17 @@ const io = new Server(server, {
   cors: { origin: CORS_ORIGIN, methods: ['GET', 'POST'] }
 });
 
+app.use(helmet());
 app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.json({ limit: '50mb' }));
+
+const loginLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: '嘗試次數過多，請稍後再試' },
+});
 
 // --- SQL Server 連線設定 ---
 
@@ -331,7 +342,7 @@ app.get('/api/auth/status', async (req, res) => {
   try {
     const r = await pool.request().query('SELECT COUNT(*) AS cnt FROM users');
     res.json({ needsSetup: r.recordset[0].cnt === 0 });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { console.error(err); res.status(500).json({ error: '內部伺服器錯誤' }); }
 });
 
 app.post('/api/auth/setup', async (req, res) => {
@@ -340,6 +351,8 @@ app.post('/api/auth/setup', async (req, res) => {
     if (cnt > 0) return res.status(403).json({ error: '設定已完成，請直接登入' });
     const { username, password } = req.body;
     if (!username || !password) return res.status(400).json({ error: '帳號與密碼為必填' });
+    if (password.length < 8 || !/[0-9]/.test(password))
+      return res.status(400).json({ error: '密碼需至少 8 個字元且包含數字' });
     const passwordHash = await bcrypt.hash(password, 12);
     const r = await pool.request()
       .input('username',      sql.NVarChar(255), username)
@@ -348,10 +361,10 @@ app.post('/api/auth/setup', async (req, res) => {
     const user = r.recordset[0];
     const token = jwt.sign({ userId: user.id.toLowerCase(), username: user.username }, JWT_SECRET, { expiresIn: '30d' });
     res.json({ token, username: user.username });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { console.error(err); res.status(500).json({ error: '內部伺服器錯誤' }); }
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
     if (!username || !password) return res.status(400).json({ error: '帳號與密碼為必填' });
@@ -364,7 +377,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (!valid) return res.status(401).json({ error: '帳號或密碼錯誤' });
     const token = jwt.sign({ userId: user.id.toLowerCase(), username: user.username }, JWT_SECRET, { expiresIn: '30d' });
     res.json({ token, username: user.username });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { console.error(err); res.status(500).json({ error: '內部伺服器錯誤' }); }
 });
 
 // --- JWT 中介層（後續所有路由皆需驗證）---
@@ -387,7 +400,7 @@ COLLECTIONS.forEach(col => {
     try {
       const result = await pool.request().query(`SELECT * FROM ${TABLE_NAME[col]} ORDER BY created_at`);
       res.json(result.recordset.map(FROM_ROW[col]));
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { console.error(err); res.status(500).json({ error: '內部伺服器錯誤' }); }
   });
 
   app.post(`/api/${col}`, requireAuth, async (req, res) => {
@@ -395,7 +408,7 @@ COLLECTIONS.forEach(col => {
       const doc = await COL_INSERT[col](sanitizeBody(req.body));
       await broadcastCollection(col);
       res.json(doc);
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { console.error(err); res.status(500).json({ error: '內部伺服器錯誤' }); }
   });
 
   app.patch(`/api/${col}/:id`, requireAuth, async (req, res) => {
@@ -403,7 +416,7 @@ COLLECTIONS.forEach(col => {
       await buildUpdate(TABLE_NAME[col], req.params.id, sanitizeBody(req.body), COL_FIELD_MAP[col]);
       await broadcastCollection(col);
       res.json({ ok: true });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { console.error(err); res.status(500).json({ error: '內部伺服器錯誤' }); }
   });
 
   app.delete(`/api/${col}/:id`, requireAuth, async (req, res) => {
@@ -413,7 +426,7 @@ COLLECTIONS.forEach(col => {
         .query(`DELETE FROM ${TABLE_NAME[col]} WHERE id = @id`);
       await broadcastCollection(col);
       res.json({ ok: true });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { console.error(err); res.status(500).json({ error: '內部伺服器錯誤' }); }
   });
 });
 
