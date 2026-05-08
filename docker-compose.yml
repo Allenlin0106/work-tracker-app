@@ -14,14 +14,20 @@ services:
       - backend
     restart: always
 
-  # 服務 2：Express + Socket.io 後端（連線至外部 MongoDB）
+  # 服務 2：Express + Socket.io 後端（連線至外部 SQL Server）
   backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
     container_name: work_tracker_backend
     environment:
-      - MONGO_URI=${MONGO_URI}
+      - SQL_SERVER=${SQL_SERVER}
+      - SQL_PORT=${SQL_PORT:-1433}
+      - SQL_DATABASE=${SQL_DATABASE}
+      - SQL_USER=${SQL_USER}
+      - SQL_PASSWORD=${SQL_PASSWORD}
+      - SQL_ENCRYPT=${SQL_ENCRYPT:-false}
+      - SQL_TRUST_CERT=${SQL_TRUST_CERT:-true}
       - JWT_SECRET=${JWT_SECRET}
       - CORS_ORIGIN=${CORS_ORIGIN}
     restart: always
