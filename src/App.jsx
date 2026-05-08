@@ -8,7 +8,7 @@ import {
   Newspaper, HardDrive, CheckCircle as CheckIcon, Tag,
   Link, Image as ImageIcon, Paperclip, ExternalLink, Upload
 } from 'lucide-react';
-import { io } from 'socket.io-client';
+import * as signalR from '@microsoft/signalr';
 
 // --- 1. 核心常數定義 ---
 
@@ -166,9 +166,9 @@ const RecurrenceBadgeDisplay = ({ task }) => {
   );
 };
 
-// --- 4. Socket.io + REST API 初始化 ---
+// --- 4. SignalR + REST API 初始化 ---
 
-const socket = io({ autoConnect: false });
+let hubConn = null;
 
 const API_BASE = '/api';
 const getToken = () => localStorage.getItem('wt_token');
@@ -274,44 +274,40 @@ export default function App() {
 
   const [taskForm, setTaskForm] = useState(INITIAL_TASK_FORM);
 
+  const connectHub = () => {
+    if (hubConn) { hubConn.stop(); hubConn = null; }
+    hubConn = new signalR.HubConnectionBuilder()
+      .withUrl('/hubs/tracker', { accessTokenFactory: () => localStorage.getItem('wt_token') ?? '' })
+      .withAutomaticReconnect()
+      .build();
+    hubConn.on('tasks:updated',  setTasks);
+    hubConn.on('logs:updated',   setLogs);
+    hubConn.on('groups:updated', setGroups);
+    hubConn.on('tags:updated',   setTags);
+    hubConn.start()
+      .then(() => setAuthState('ready'))
+      .catch(err => {
+        if (err?.statusCode === 401 || String(err?.message).includes('401')) {
+          localStorage.removeItem('wt_token');
+          localStorage.removeItem('wt_username');
+          setCurrentUsername('');
+          setAuthState('login');
+        }
+      });
+  };
+
   useEffect(() => {
-    const onConnect = () => setAuthState('ready');
-    const onConnectError = (err) => {
-      if (err.message === 'unauthorized') {
-        localStorage.removeItem('wt_token');
-        localStorage.removeItem('wt_username');
-        setCurrentUsername('');
-        setAuthState('login');
-      }
-    };
-
-    socket.on('tasks:updated', setTasks);
-    socket.on('logs:updated', setLogs);
-    socket.on('groups:updated', setGroups);
-    socket.on('tags:updated', setTags);
-    socket.on('connect', onConnect);
-    socket.on('connect_error', onConnectError);
-
     const token = localStorage.getItem('wt_token');
     if (token) {
-      socket.auth = { token };
-      socket.connect();
+      connectHub();
     } else {
       fetch('/api/auth/status')
         .then(r => r.json())
         .then(data => setAuthState(data.needsSetup ? 'setup' : 'login'))
         .catch(() => setAuthState('login'));
     }
-
-    return () => {
-      socket.off('tasks:updated', setTasks);
-      socket.off('logs:updated', setLogs);
-      socket.off('groups:updated', setGroups);
-      socket.off('tags:updated', setTags);
-      socket.off('connect', onConnect);
-      socket.off('connect_error', onConnectError);
-    };
-  }, []);
+    return () => { hubConn?.stop(); hubConn = null; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -328,8 +324,7 @@ export default function App() {
       localStorage.setItem('wt_token', data.token);
       localStorage.setItem('wt_username', data.username);
       setCurrentUsername(data.username);
-      socket.auth = { token: data.token };
-      socket.connect();
+      connectHub();
       setAuthState('loading');
     } catch {
       setLoginError('網路錯誤，請重試');
@@ -353,8 +348,7 @@ export default function App() {
       localStorage.setItem('wt_token', data.token);
       localStorage.setItem('wt_username', data.username);
       setCurrentUsername(data.username);
-      socket.auth = { token: data.token };
-      socket.connect();
+      connectHub();
       setAuthState('loading');
     } catch {
       setLoginError('網路錯誤，請重試');
@@ -366,7 +360,7 @@ export default function App() {
   const handleLogout = () => {
     localStorage.removeItem('wt_token');
     localStorage.removeItem('wt_username');
-    socket.disconnect();
+    hubConn?.stop(); hubConn = null;
     setAuthState('login');
     setCurrentUsername('');
     setTasks([]);
