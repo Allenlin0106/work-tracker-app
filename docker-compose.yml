@@ -14,29 +14,16 @@ services:
       - backend
     restart: always
 
-  # 服務 2：Express + Socket.io 後端（僅內部網路存取）
+  # 服務 2：Express + Socket.io 後端（連線至外部 MongoDB）
   backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
     container_name: work_tracker_backend
     environment:
-      - MONGO_URI=mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASS}@mongo:27017/worktracker?authSource=admin
+      - MONGO_URI=${MONGO_URI}
       - JWT_SECRET=${JWT_SECRET}
       - CORS_ORIGIN=${CORS_ORIGIN}
-    depends_on:
-      - mongo
-    restart: always
-
-  # 服務 3：MongoDB 資料庫（僅內部網路存取，不對外暴露 port）
-  mongo:
-    image: mongo:7
-    container_name: work_tracker_mongo
-    environment:
-      - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USER}
-      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASS}
-    volumes:
-      - ./mongo-data:/data/db
     restart: always
 
 networks:

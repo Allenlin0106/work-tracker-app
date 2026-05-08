@@ -5,9 +5,6 @@ server/node_modules/
 # 建置輸出
 dist/
 
-# 資料持久化（不應進版本控制）
-mongo-data/
-
 # 環境變數（.env.example 進 git；其餘不進）
 .env
 .env.local
