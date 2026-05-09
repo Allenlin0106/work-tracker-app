@@ -83,7 +83,7 @@ public class DbService(string connectionString)
     {
         id        = r.id.ToString().ToLower(),
         name      = r.name,
-        color     = r.color,
+        color     = ParseJsonOrNull(r.color),
         createdAt = r.created_at,
         updatedAt = r.updated_at,
     };
@@ -94,6 +94,13 @@ public class DbService(string connectionString)
     {
         var json = string.IsNullOrEmpty(s) ? defaultJson : s;
         using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.Clone();
+    }
+
+    private static JsonElement? ParseJsonOrNull(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return null;
+        using var doc = JsonDocument.Parse(s);
         return doc.RootElement.Clone();
     }
 
@@ -163,10 +170,18 @@ public class DbService(string connectionString)
             CREATE TABLE [groups] (
               id         UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
               name       NVARCHAR(255)    NOT NULL UNIQUE,
-              color      NVARCHAR(50),
+              color      NVARCHAR(500),
               created_at DATETIME2        NOT NULL DEFAULT GETDATE(),
               updated_at DATETIME2        NOT NULL DEFAULT GETDATE()
             )
+            """);
+
+        await conn.ExecuteAsync("""
+            IF EXISTS (
+                SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'groups' AND COLUMN_NAME = 'color'
+                  AND CHARACTER_MAXIMUM_LENGTH < 500
+            ) ALTER TABLE [groups] ALTER COLUMN color NVARCHAR(500) NULL
             """);
 
         await conn.ExecuteAsync("""
@@ -174,10 +189,18 @@ public class DbService(string connectionString)
             CREATE TABLE tags (
               id         UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
               name       NVARCHAR(255)    NOT NULL UNIQUE,
-              color      NVARCHAR(50),
+              color      NVARCHAR(500),
               created_at DATETIME2        NOT NULL DEFAULT GETDATE(),
               updated_at DATETIME2        NOT NULL DEFAULT GETDATE()
             )
+            """);
+
+        await conn.ExecuteAsync("""
+            IF EXISTS (
+                SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'tags' AND COLUMN_NAME = 'color'
+                  AND CHARACTER_MAXIMUM_LENGTH < 500
+            ) ALTER TABLE tags ALTER COLUMN color NVARCHAR(500) NULL
             """);
 
         await conn.ExecuteAsync("""

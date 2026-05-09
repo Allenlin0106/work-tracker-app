@@ -45,7 +45,7 @@ public class DataController(DbService db, IHubContext<TrackerHub> hub) : Control
     private static readonly FieldDef[] GroupTagFieldMap =
     [
         new("name",  "name",  DbType.String, v => v.GetString()),
-        new("color", "color", DbType.String, v => v.ValueKind == JsonValueKind.Null ? null : v.GetString()),
+        new("color", "color", DbType.String, v => v.ValueKind == JsonValueKind.Null ? null : v.GetRawText()),
     ];
 
     private static readonly Dictionary<string, FieldDef[]> FieldMaps = new()
@@ -204,7 +204,7 @@ public class DataController(DbService db, IHubContext<TrackerHub> hub) : Control
             OUTPUT INSERTED.*
             VALUES (@name, @color)
             """,
-            new { name = GetStr(b, "name"), color = GetStrOrNull(b, "color") });
+            new { name = GetStr(b, "name"), color = GetRawOrNull(b, "color") });
         return DbService.FromGroupRow(rows.Single());
     }
 
@@ -215,7 +215,7 @@ public class DataController(DbService db, IHubContext<TrackerHub> hub) : Control
             OUTPUT INSERTED.*
             VALUES (@name, @color)
             """,
-            new { name = GetStr(b, "name"), color = GetStrOrNull(b, "color") });
+            new { name = GetStr(b, "name"), color = GetRawOrNull(b, "color") });
         return DbService.FromGroupRow(rows.Single());
     }
 
@@ -254,6 +254,10 @@ public class DataController(DbService db, IHubContext<TrackerHub> hub) : Control
     private static string? GetStrOrNull(JsonElement b, string key) =>
         b.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String
             ? v.GetString() : null;
+
+    private static string? GetRawOrNull(JsonElement b, string key) =>
+        b.TryGetProperty(key, out var v) && v.ValueKind != JsonValueKind.Null
+            ? v.GetRawText() : null;
 
     private static int GetInt(JsonElement b, string key, int def = 0) =>
         b.TryGetProperty(key, out var v) && v.TryGetInt32(out var i) ? i : def;

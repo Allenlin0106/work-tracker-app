@@ -1393,9 +1393,10 @@ export default function App() {
                     return (
                       <div className="flex items-center gap-2 ml-2 pl-3 border-l border-slate-200">
                         {validTags.map(tName => {
-                          const tObj = tags.find(t => t.name === tName) || { color: { bg: 'bg-slate-100', text: 'text-slate-400', border: 'border-slate-200' } };
+                          const tObj = tags.find(t => t.name === tName);
+                          const colorObj = tObj?.color || { bg: 'bg-slate-100', text: 'text-slate-400', border: 'border-slate-200' };
                           return (
-                            <span key={tName} className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-widest border ${tObj.color.bg} ${tObj.color.text} ${tObj.color.border}`}>
+                            <span key={tName} className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-widest border ${colorObj.bg} ${colorObj.text} ${colorObj.border}`}>
                               {tName}
                               <button 
                                 onClick={(e) => {
