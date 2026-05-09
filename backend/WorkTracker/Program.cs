@@ -14,23 +14,33 @@ var appCfg  = builder.Configuration.GetSection("App");
 
 // ── 1. 啟動時解密敏感憑證（對應 Node.js 啟動時的 decrypt / ResolveSecret）─────
 
-var enc         = new EncryptionService();
-var sqlPassword = enc.ResolveSecret(appCfg["EncryptedSqlPassword"], appCfg["SqlPassword"]);
-var jwtSecret   = enc.ResolveSecret(appCfg["EncryptedJwtSecret"],   appCfg["JwtSecret"] ?? "dev-secret-change-in-production");
+var enc       = new EncryptionService();
+var jwtSecret = enc.ResolveSecret(appCfg["EncryptedJwtSecret"], appCfg["JwtSecret"] ?? "dev-secret-change-in-production");
 
-// ── 2. SQL Server 連線字串 ─────────────────────────────────────────────────────
+// ── 2. 連線字串：直接覆蓋（LocalDB / 開發）或由元件組合（SQL Server / 正式）────
+//      設定 App:SqlConnectionString 即可跳過帳密解密，適用 Windows 整合驗證（LocalDB）
 
-var connStr = new SqlConnectionStringBuilder
+string connStr;
+var directConnStr = appCfg["SqlConnectionString"];
+if (!string.IsNullOrEmpty(directConnStr))
 {
-    DataSource             = $"{appCfg["SqlServer"] ?? "localhost"},{appCfg["SqlPort"] ?? "1433"}",
-    InitialCatalog         = appCfg["SqlDatabase"] ?? "worktracker",
-    UserID                 = appCfg["SqlUser"] ?? "",
-    Password               = sqlPassword,
-    Encrypt                = bool.Parse(appCfg["SqlEncrypt"]  ?? "false"),
-    TrustServerCertificate = bool.Parse(appCfg["SqlTrustCert"] ?? "true"),
-    MaxPoolSize            = 10,
-    ConnectTimeout         = 30,
-}.ConnectionString;
+    connStr = directConnStr;
+}
+else
+{
+    var sqlPassword = enc.ResolveSecret(appCfg["EncryptedSqlPassword"], appCfg["SqlPassword"]);
+    connStr = new SqlConnectionStringBuilder
+    {
+        DataSource             = $"{appCfg["SqlServer"] ?? "localhost"},{appCfg["SqlPort"] ?? "1433"}",
+        InitialCatalog         = appCfg["SqlDatabase"] ?? "worktracker",
+        UserID                 = appCfg["SqlUser"] ?? "",
+        Password               = sqlPassword,
+        Encrypt                = bool.Parse(appCfg["SqlEncrypt"]  ?? "false"),
+        TrustServerCertificate = bool.Parse(appCfg["SqlTrustCert"] ?? "true"),
+        MaxPoolSize            = 10,
+        ConnectTimeout         = 30,
+    }.ConnectionString;
+}
 
 // ── 3. 服務注入 ────────────────────────────────────────────────────────────────
 
