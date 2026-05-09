@@ -129,6 +129,21 @@ public class DbService(string connectionString)
 
     public async Task InitAsync()
     {
+        // Auto-create the database if it doesn't exist (required for LocalDB first run).
+        // CREATE DATABASE doesn't support parameters; name is from config, not user input.
+        var cb     = new SqlConnectionStringBuilder(connectionString);
+        var dbName = cb.InitialCatalog;
+        if (!string.IsNullOrEmpty(dbName))
+        {
+            cb.InitialCatalog = "master";
+            await using var master = new SqlConnection(cb.ConnectionString);
+            await master.OpenAsync();
+            var safeName    = dbName.Replace("'", "''");
+            var safeBracket = dbName.Replace("]", "]]");
+            await master.ExecuteAsync(
+                $"IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = N'{safeName}') CREATE DATABASE [{safeBracket}]");
+        }
+
         await using var conn = await OpenAsync();
         Console.WriteLine("[DB] SQL Server connected");
 
