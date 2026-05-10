@@ -685,6 +685,38 @@ public partial class MainPage : IDisposable
         _newTagColor  = ColorConstants.TagColors[0];
     }
 
+    // ── DateOnly proxies (Blazor 10: @bind on type="date" requires DateOnly?) ──
+    private DateOnly? ReportStartDate
+    {
+        get => DateOnly.TryParse(_reportRangeStart, out var d) ? d : null;
+        set => _reportRangeStart = value?.ToString("yyyy-MM-dd") ?? string.Empty;
+    }
+    private DateOnly? ReportEndDate
+    {
+        get => DateOnly.TryParse(_reportRangeEnd, out var d) ? d : null;
+        set => _reportRangeEnd = value?.ToString("yyyy-MM-dd") ?? string.Empty;
+    }
+    private DateOnly? ChecklistStart
+    {
+        get => DateOnly.TryParse(_newChecklistStartDate, out var d) ? d : null;
+        set => _newChecklistStartDate = value?.ToString("yyyy-MM-dd") ?? string.Empty;
+    }
+    private DateOnly? ChecklistEnd
+    {
+        get => DateOnly.TryParse(_newChecklistEndDate, out var d) ? d : null;
+        set => _newChecklistEndDate = value?.ToString("yyyy-MM-dd") ?? string.Empty;
+    }
+    private DateOnly? FormStartDate
+    {
+        get => DateOnly.TryParse(_taskForm.StartDate, out var d) ? d : null;
+        set => _taskForm.StartDate = value?.ToString("yyyy-MM-dd") ?? string.Empty;
+    }
+    private DateOnly? FormEndDate
+    {
+        get => DateOnly.TryParse(_taskForm.EndDate, out var d) ? d : null;
+        set => _taskForm.EndDate = value?.ToString("yyyy-MM-dd") ?? string.Empty;
+    }
+
     // ── Date helpers ──────────────────────────────────────────────────────────
     private static string FormatDate(DateTime d) =>
         d.ToString("yyyy-MM-dd");

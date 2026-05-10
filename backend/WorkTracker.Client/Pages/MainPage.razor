@@ -395,12 +395,10 @@
                                 <div class="flex items-center gap-3 bg-white px-5 py-2.5 rounded-full border shadow-sm flex-wrap">
                                     <LucideIcon Name="calendar-days" Class="w-5 h-5 text-slate-400" />
                                     <input type="date" class="bg-transparent text-sm font-black text-slate-600 outline-none cursor-pointer"
-                                           value="@_reportRangeStart"
-                                           @onchange="e => _reportRangeStart = e.Value?.ToString() ?? string.Empty" />
+                                           @bind="ReportStartDate" />
                                     <span class="text-slate-300">~</span>
                                     <input type="date" class="bg-transparent text-sm font-black text-slate-600 outline-none cursor-pointer"
-                                           value="@_reportRangeEnd"
-                                           @onchange="e => _reportRangeEnd = e.Value?.ToString() ?? string.Empty" />
+                                           @bind="ReportEndDate" />
                                     <button @onclick="() => { _reportRangeStart = FormatDate(DateTime.Today.AddDays(-7)); _reportRangeEnd = FormatDate(DateTime.Today); }"
                                             class="ml-2 p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 transition-colors">
                                         <LucideIcon Name="refresh-cw" Class="w-4 h-4" />
@@ -703,14 +701,12 @@
                         <div class="flex flex-col">
                             <label class="text-xs font-black text-slate-400 mb-2 uppercase tracking-widest">子項開始</label>
                             <input type="date" class="bg-white px-4 py-3 rounded-xl text-sm font-bold border border-slate-200 focus:ring-4 focus:ring-indigo-100"
-                                   value="@_newChecklistStartDate"
-                                   @onchange="e => _newChecklistStartDate = e.Value?.ToString() ?? string.Empty" />
+                                   @bind="ChecklistStart" />
                         </div>
                         <div class="flex flex-col">
                             <label class="text-[10px] font-black text-slate-400 mb-2 uppercase tracking-widest">子項截止</label>
                             <input type="date" class="bg-white px-4 py-3 rounded-xl text-sm font-bold border border-slate-200 focus:ring-4 focus:ring-indigo-100"
-                                   value="@_newChecklistEndDate"
-                                   @onchange="e => _newChecklistEndDate = e.Value?.ToString() ?? string.Empty" />
+                                   @bind="ChecklistEnd" />
                         </div>
                     </div>
                     @if (!string.IsNullOrEmpty(_checklistError))
@@ -901,14 +897,12 @@
                     <div>
                         <label class="text-xs font-black text-slate-400 mb-3 block tracking-widest">開始日期</label>
                         <input type="date" class="w-full p-5 bg-slate-50 border rounded-2xl font-bold text-base shadow-sm"
-                               value="@_taskForm.StartDate"
-                               @onchange="e => _taskForm.StartDate = e.Value?.ToString() ?? string.Empty" />
+                               @bind="FormStartDate" />
                     </div>
                     <div>
                         <label class="text-xs font-black text-slate-400 mb-3 block tracking-widest">截止日期</label>
                         <input type="date" class="w-full p-5 bg-slate-50 border rounded-2xl font-bold text-base shadow-sm"
-                               value="@_taskForm.EndDate"
-                               @onchange="e => _taskForm.EndDate = e.Value?.ToString() ?? string.Empty" />
+                               @bind="FormEndDate" />
                     </div>
                 </div>
 
