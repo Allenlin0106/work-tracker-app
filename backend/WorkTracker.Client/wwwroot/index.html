@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Progress Hub</title>
+    <base href="/" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 隱藏 Blazor 預設載入指示器 */
+        #blazor-error-ui { display: none; }
+        .animate-spin { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .animate-pulse { animation: pulse 2s cubic-bezier(0.4,0,0.6,1) infinite; }
+        @keyframes pulse { 0%,100%{ opacity:1 } 50%{ opacity:.5 } }
+        .scrollbar-thin { scrollbar-width: thin; }
+        /* 平滑滾動條 */
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div style="height:100vh;display:flex;align-items:center;justify-content:center;font-weight:900;color:#4f46e5;font-family:sans-serif">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite;margin-right:12px"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+            載入中...
+        </div>
+    </div>
+    <div id="blazor-error-ui">
+        發生未預期的錯誤，<a href="">重新載入</a>
+        <a class="dismiss">🗙</a>
+    </div>
+    <script>
+        // 圖片壓縮（Promise 版，供 Blazor JS.InvokeAsync 呼叫）
+        window.compressImageFromDataUrl = function(dataUrl) {
+            return new Promise(function(resolve) {
+                var img = new Image();
+                img.onload = function() {
+                    var canvas = document.createElement('canvas');
+                    var w = img.width, h = img.height, max = 1200;
+                    if (w > h && w > max) { h = h * max / w; w = max; }
+                    else if (h > max) { w = w * max / h; h = max; }
+                    canvas.width = w; canvas.height = h;
+                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                    resolve(canvas.toDataURL('image/jpeg', 0.7));
+                };
+                img.onerror = function() { resolve(dataUrl); };
+                img.src = dataUrl;
+            });
+        };
+
+        // 讀取檔案為 dataUrl
+        window.readFileAsDataUrl = function(inputElement) {
+            return new Promise(function(resolve) {
+                var file = inputElement.files[0];
+                if (!file) { resolve(null); return; }
+                var reader = new FileReader();
+                reader.onload = function(e) { resolve(e.target.result); };
+                reader.readAsDataURL(file);
+            });
+        };
+
+        // localStorage 操作
+        window.localStorageGet = function(key) { return localStorage.getItem(key); };
+        window.localStorageSet = function(key, val) { localStorage.setItem(key, val); };
+        window.localStorageRemove = function(key) { localStorage.removeItem(key); };
+    </script>
+    <script src="_framework/blazor.webassembly.js"></script>
+</body>
+</html>

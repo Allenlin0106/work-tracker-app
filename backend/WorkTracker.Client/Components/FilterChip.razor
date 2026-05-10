@@ -1,0 +1,17 @@
+@* 對應 React FilterChip 元件 *@
+<button @onclick="OnClick"
+        class="px-4 py-2 rounded-xl text-sm font-black border transition-all active:scale-95 flex items-center gap-1.5 @(IsActive ? $"{ActiveClass} text-white shadow-md ring-2 ring-offset-1" : $"{UnselectedClass} hover:border-slate-400")">
+    @if (IsActive)
+    {
+        <LucideIcon Name="check" Class="w-4 h-4" />
+    }
+    @Label
+</button>
+
+@code {
+    [Parameter] public string  Label          { get; set; } = "";
+    [Parameter] public bool    IsActive       { get; set; }
+    [Parameter] public string  ActiveClass    { get; set; } = "bg-indigo-600";
+    [Parameter] public string  UnselectedClass{ get; set; } = "bg-slate-50 text-slate-500 border-transparent shadow-sm";
+    [Parameter] public EventCallback OnClick  { get; set; }
+}

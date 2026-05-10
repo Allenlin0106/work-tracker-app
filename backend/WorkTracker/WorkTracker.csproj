@@ -10,5 +10,9 @@
     <PackageReference Include="Microsoft.Data.SqlClient" Version="5.*" />
     <PackageReference Include="Dapper" Version="2.*" />
     <PackageReference Include="BCrypt.Net-Next" Version="4.*" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="8.0.8" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WorkTracker.Client\WorkTracker.Client.csproj" />
   </ItemGroup>
 </Project>

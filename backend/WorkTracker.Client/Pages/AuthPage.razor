@@ -1,0 +1,145 @@
+@inject ApiService Api
+@inject AuthService Auth
+@inject HubService Hub
+@inject NavigationManager Nav
+
+@if (_authState == "loading" || _authState == "check")
+{
+    <div class="h-screen flex items-center justify-center bg-slate-50 font-black text-indigo-600">
+        <LucideIcon Name="loader-2" Class="w-6 h-6 animate-spin mr-3" />安全連線初始化中...
+    </div>
+}
+else
+{
+    bool isSetup = _authState == "setup";
+    <div class="min-h-screen bg-gradient-to-br from-slate-100 to-indigo-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center justify-center w-14 h-14 bg-indigo-600 rounded-2xl mb-4 shadow-lg">
+                    <LucideIcon Name="layout-dashboard" Class="w-7 h-7 text-white" />
+                </div>
+                <h1 class="text-2xl font-black text-slate-800">Progress Hub</h1>
+                <p class="text-slate-500 text-sm mt-1">@(isSetup ? "首次使用，請建立管理員帳號" : "請登入以繼續")</p>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="mb-5 p-3 bg-red-50 text-red-600 text-sm rounded-xl border border-red-100">@_error</div>
+            }
+
+            <EditForm Model="_form" OnValidSubmit="HandleSubmit">
+                <div class="mb-4">
+                    <label class="block text-sm font-bold text-slate-700 mb-1.5">帳號</label>
+                    <input type="text" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                           @bind="_form.Username" required autofocus />
+                </div>
+                <div class="mb-6">
+                    <label class="block text-sm font-bold text-slate-700 mb-1.5">密碼</label>
+                    <input type="password" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                           @bind="_form.Password" required />
+                </div>
+                <button type="submit" disabled="@_busy"
+                        class="w-full bg-indigo-600 text-white rounded-xl py-2.5 text-sm font-bold hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                    @if (_busy)
+                    {
+                        <LucideIcon Name="loader-2" Class="w-4 h-4 animate-spin" />
+                        @(isSetup ? "建立中..." : "登入中...")
+                    }
+                    else
+                    {
+                        @(isSetup ? "建立帳號" : "登入")
+                    }
+                </button>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public EventCallback OnAuthenticated { get; set; }
+
+    private string _authState = "check";
+    private string _error     = "";
+    private bool   _busy;
+
+    private LoginForm _form = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // 若有 token，直接嘗試連線
+        await Auth.InitAsync();
+        if (Auth.IsAuthenticated)
+        {
+            await ConnectAndNotify();
+            return;
+        }
+
+        // 否則查詢是否需要 setup
+        try
+        {
+            var resp = await Api.GetAuthStatusAsync();
+            var data = await resp.Content.ReadFromJsonAsync<AuthStatusDto>();
+            _authState = data?.NeedsSetup == true ? "setup" : "login";
+        }
+        catch
+        {
+            _authState = "login";
+        }
+    }
+
+    private async Task HandleSubmit()
+    {
+        _busy  = true;
+        _error = "";
+        try
+        {
+            string path = _authState == "setup" ? "setup" : "login";
+            var resp = await Api.PostAuthAsync(path, new { username = _form.Username, password = _form.Password });
+            var data = await resp.Content.ReadFromJsonAsync<AuthResponseDto>();
+            if (!resp.IsSuccessStatusCode || data is null)
+            {
+                _error = data?.Error ?? "操作失敗";
+                return;
+            }
+            await Auth.SetTokenAsync(data.Token, data.Username);
+            await ConnectAndNotify();
+        }
+        catch
+        {
+            _error = "網路錯誤，請重試";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ConnectAndNotify()
+    {
+        _authState = "loading";
+        try
+        {
+            await Hub.ConnectAsync(Nav.BaseUri);
+        }
+        catch
+        {
+            await Auth.ClearAsync();
+            _authState = "login";
+            _error     = "連線失敗，請重新登入";
+            return;
+        }
+        await OnAuthenticated.InvokeAsync();
+    }
+
+    private class LoginForm
+    {
+        public string Username { get; set; } = "";
+        public string Password { get; set; } = "";
+    }
+
+    private record AuthStatusDto([property: System.Text.Json.Serialization.JsonPropertyName("needsSetup")] bool NeedsSetup);
+    private record AuthResponseDto(
+        [property: System.Text.Json.Serialization.JsonPropertyName("token")]    string Token,
+        [property: System.Text.Json.Serialization.JsonPropertyName("username")] string Username,
+        [property: System.Text.Json.Serialization.JsonPropertyName("error")]    string? Error);
+}

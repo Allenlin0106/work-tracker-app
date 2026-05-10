@@ -1,0 +1,24 @@
+@using WorkTracker.Client.Models
+
+@* 對應 React RecurrenceBadgeDisplay 元件 *@
+@if (Task.IsRecurring && Config is not null)
+{
+    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black border bg-indigo-50 text-indigo-600 border-indigo-100 shadow-sm uppercase tracking-tighter mt-1 mb-1">
+        <LucideIcon Name="@Config.Icon" Class="w-3 h-3" />
+        每 @Task.RecurrenceInterval @Config.Label
+    </span>
+}
+
+@code {
+    [Parameter] public TaskItem Task { get; set; } = new();
+
+    private RecurrenceType? Config => Task.RecurrenceType switch
+    {
+        "daily"   => new("日", "refresh-cw"),
+        "weekly"  => new("週", "repeat"),
+        "monthly" => new("月", "calendar"),
+        _         => null
+    };
+
+    private record RecurrenceType(string Label, string Icon);
+}

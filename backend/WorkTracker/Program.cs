@@ -119,12 +119,15 @@ catch (Exception ex)
 
 // ── 8. 中介層管線 ──────────────────────────────────────────────────────────────
 
+app.UseBlazorFrameworkFiles();
+app.UseStaticFiles();
 app.UseRateLimiter();
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHub<TrackerHub>("/hubs/tracker");
+app.MapFallbackToFile("index.html");
 
 await app.RunAsync();
 
