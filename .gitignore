@@ -1,9 +1,3 @@
-# 依賴套件
-node_modules/
-
-# 建置輸出
-dist/
-
 # 環境變數（不進 git）
 .env
 .env.local
@@ -30,10 +24,9 @@ backups/
 # .NET 建置產出
 backend/WorkTracker/bin/
 backend/WorkTracker/obj/
+backend/WorkTracker.Client/bin/
+backend/WorkTracker.Client/obj/
 
 # 系統
 .DS_Store
 Thumbs.db
-
-# Vite
-*.local

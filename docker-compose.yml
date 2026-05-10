@@ -1,20 +1,33 @@
 services:
-  # 前端：React (Vite) 建置 + Nginx 反向代理
+  # ASP.NET Core 後端 + Blazor WASM 靜態檔案（單一容器）
   app:
     build:
       context: .
-      dockerfile: Dockerfile.app
-    container_name: work_tracker_platform
+      dockerfile: Dockerfile.server
+    container_name: work_tracker_app
+    expose:
+      - "80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:80
+      # 正式環境請以環境變數或 secrets 覆蓋下列設定
+      # - App__SqlConnectionString=Server=...
+      # - App__JwtSecret=...
+    restart: always
+
+  # Nginx：SSL 終止 + 反向代理至 ASP.NET Core
+  nginx:
+    image: nginx:stable-alpine
+    container_name: work_tracker_nginx
     ports:
       - "8088:443"
       - "8089:80"
     volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - app
     restart: always
-
-# 注意：ASP.NET Core 後端（backend/WorkTracker/）目前以 IIS Express 本機開發。
-# 正式部署時請另行建立 Dockerfile（FROM mcr.microsoft.com/dotnet/aspnet:8.0）
-# 並將 backend 服務加回此檔案，同時調整 nginx.conf proxy_pass 目標。
 
 networks:
   default:
