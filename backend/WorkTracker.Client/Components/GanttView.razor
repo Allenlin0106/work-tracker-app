@@ -1,0 +1,95 @@
+@using WorkTracker.Client.Services
+@using WorkTracker.Client.Models
+
+@{
+    var cfg = BuildGanttConfig();
+}
+<div class="flex-1 overflow-auto relative scrollbar-thin">
+    <div class="inline-block min-w-full">
+        @* Gantt header *@
+        <div class="flex sticky top-0 z-40 bg-white/95 border-b border-slate-200 backdrop-blur shadow-sm items-stretch">
+            <div class="w-80 shrink-0 bg-slate-50/50 px-8 py-6 font-black text-sm text-slate-400 border-r border-slate-200 uppercase tracking-widest flex items-center justify-center">任務項目</div>
+            <div class="flex flex-col shrink-0">
+                <div class="flex border-b border-slate-200">
+                    @foreach (var th in cfg.TopHeaders)
+                    {
+                        <div class="text-center py-1.5 text-xs font-black text-slate-500 uppercase tracking-widest border-r border-slate-200 bg-slate-50/80 flex items-center justify-center"
+                             style="width: @(th.Span * cfg.ColWidth)px">@th.Label</div>
+                    }
+                </div>
+                <div class="flex flex-1">
+                    @foreach (var unit in cfg.Units)
+                    {
+                        bool isCur = CheckIsCurrent(unit.Date, GanttScale);
+                        <div class="shrink-0 text-center py-2.5 border-r border-slate-100/50 flex flex-col items-center justify-center @(isCur ? "bg-yellow-50/70 border-b-2 border-b-yellow-400" : "")"
+                             style="width: @(cfg.ColWidth)px">
+                            <span class="text-[10px] font-black uppercase text-slate-400 leading-none">@unit.SubLabel</span>
+                            <span class="text-sm font-black mt-1 text-slate-600 leading-none">@unit.Label</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+        @* Gantt rows *@
+        @foreach (var task in GanttVisibleTasks(cfg))
+        {
+            var (sLabel, sColor, sIcon) = TaskHelpers.GetTaskStatus(task, AppState.Logs);
+            bool isExpanded = _expandedTasks.Contains(task.Id);
+            double left  = GetGanttPos(task.StartDate, cfg);
+            double width = GetGanttWidth(task.StartDate, task.EndDate, cfg);
+            bool isDelayed = TaskHelpers.GetTaskStatusValue(task, AppState.Logs) == "delayed";
+            var validTags = task.Tags.Where(tName => AppState.Tags.Any(t => t.Name == tName)).ToList();
+            <div class="flex border-b border-slate-50 transition-all">
+                <div class="w-80 shrink-0 border-r border-slate-200 bg-white px-8 py-5 sticky left-0 z-20 flex items-center gap-4 shadow-md shadow-slate-100/50">
+                    <button @onclick="() => { if (_expandedTasks.Contains(task.Id)) _expandedTasks.Remove(task.Id); else _expandedTasks.Add(task.Id); }"
+                            class="text-slate-300 hover:text-indigo-600 transition-all">
+                        <LucideIcon Name='@(isExpanded ? "chevron-down" : "chevron-right")' Class="w-5 h-5" />
+                    </button>
+                    <div class="overflow-hidden cursor-pointer" @onclick="() => OnSelectTask.InvokeAsync(task.Id)">
+                        <div class="text-base font-black truncate text-slate-700 flex items-center gap-2">
+                            @task.Title
+                            @if (task.Attachments.Count > 0) { <LucideIcon Name="paperclip" Class="w-3 h-3 text-slate-300" /> }
+                        </div>
+                        <div class="flex items-center gap-2 mt-0.5">
+                            <div class="text-xs text-slate-400 font-bold uppercase truncate max-w-[120px]">@TaskHelpers.DisplayAssignee(task.Assignee)</div>
+                            <div class="text-xs text-slate-400 font-bold">· @(task.Progress)%</div>
+                            @foreach (var tName in validTags)
+                            {
+                                var tObj = AppState.Tags.FirstOrDefault(t => t.Name == tName);
+                                <div class="w-2 h-2 rounded-full @(tObj?.Color?.Active ?? "bg-slate-300")" title="@tName"></div>
+                            }
+                        </div>
+                    </div>
+                </div>
+                <div class="relative @(isExpanded ? "pt-8 pb-10 bg-slate-50/30" : "pt-8 pb-8") shrink-0" style="width: @(cfg.Units.Count * cfg.ColWidth)px">
+                    <div class="absolute inset-0 z-0 flex pointer-events-none">
+                        @foreach (var unit in cfg.Units)
+                        {
+                            <div class="h-full border-r border-slate-100/30 @(CheckIsCurrent(unit.Date, GanttScale) ? "bg-yellow-50/40" : "")" style="width: @(cfg.ColWidth)px"></div>
+                        }
+                    </div>
+                    <div class="relative z-10">
+                        <div class="relative h-10 rounded-xl border shadow-sm flex items-center px-5 cursor-pointer bg-white transition-all @(isDelayed ? "border-rose-200" : "border-indigo-100")"
+                             style="margin-left: @(left)px; width: @(Math.Max(width, 24))px"
+                             @onclick="() => OnSelectTask.InvokeAsync(task.Id)">
+                            <div class="absolute left-0 top-0 h-full rounded-xl opacity-20 @(isDelayed ? "bg-rose-500" : "bg-indigo-500")" style="width: @(task.Progress)%"></div>
+                            <span class="text-xs font-black z-20 @(isDelayed ? "text-rose-700" : "text-indigo-700")">@(task.Progress)%</span>
+                        </div>
+                        @if (isExpanded)
+                        {
+                            @foreach (var item in task.Checklist)
+                            {
+                                double iLeft  = GetGanttPos(item.StartDate ?? item.DueDate, cfg);
+                                double iWidth = GetGanttWidth(item.StartDate ?? item.DueDate, item.DueDate, cfg);
+                                <div class="relative flex items-center h-7 mt-3" style="margin-left: @(iLeft)px">
+                                    <div class="h-2.5 rounded-full border shadow-sm @(item.Completed ? "bg-emerald-500 border-emerald-200" : "bg-indigo-500 border-indigo-200")" style="width: @(Math.Max(iWidth, 12))px"></div>
+                                    <span class="ml-4 text-xs font-bold text-slate-500 whitespace-nowrap opacity-80">@item.Text</span>
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>

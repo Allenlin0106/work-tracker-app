@@ -1,0 +1,163 @@
+@using WorkTracker.Client.Services
+@using WorkTracker.Client.Models
+
+@if (IsOpen)
+{
+    <div class="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+         @onclick="OnClose">
+        <div class="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl overflow-hidden" @onclick:stopPropagation="true">
+            <div class="px-12 py-10 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <h3 class="text-2xl font-black">@(_editingTaskId is not null ? "編輯工作" : "建立新工作")</h3>
+                <button @onclick="OnClose" class="p-3 hover:bg-slate-100 rounded-xl transition-all">
+                    <LucideIcon Name="x" Class="w-8 h-8 text-slate-400" />
+                </button>
+            </div>
+            <form @onsubmit:preventDefault @onsubmit="HandleSaveTask" class="p-12 space-y-8 scrollbar-thin overflow-y-auto max-h-[80vh]">
+                @if (!string.IsNullOrEmpty(_formError))
+                {
+                    <div class="p-5 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3 text-rose-600 text-sm font-black">
+                        <LucideIcon Name="alert-circle" Class="w-5 h-5" /> @_formError
+                    </div>
+                }
+
+                <div>
+                    <label class="text-xs font-black text-slate-400 uppercase mb-3 block tracking-widest">工作標題</label>
+                    <input class="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-bold text-base shadow-sm focus:ring-4 focus:ring-indigo-100/50 transition-all"
+                           @bind="_taskForm.Title" />
+                </div>
+
+                <div>
+                    <label class="text-xs font-black text-slate-400 uppercase mb-4 block tracking-widest flex items-center gap-2">
+                        <LucideIcon Name="tag" Class="w-4 h-4" /> 專案標籤 (可複選)
+                    </label>
+                    @if (AppState.Tags.Count > 0)
+                    {
+                        <div class="flex flex-wrap gap-3">
+                            @foreach (var t in AppState.Tags)
+                            {
+                                bool isSel = _taskForm.Tags.Contains(t.Name);
+                                <button type="button"
+                                        @onclick="() => { if (isSel) _taskForm.Tags.Remove(t.Name); else _taskForm.Tags.Add(t.Name); }"
+                                        class="px-5 py-2.5 rounded-xl text-sm font-black border transition-all flex items-center gap-2 @(isSel ? $"{t.Color?.Active ?? "bg-indigo-600"} text-white shadow-lg" : $"{t.Color?.Bg ?? "bg-slate-50"} {t.Color?.Text ?? "text-slate-500"} border-transparent shadow-sm hover:bg-slate-200")">
+                                    @t.Name
+                                    @if (isSel) { <LucideIcon Name="x" Class="w-4 h-4" /> }
+                                </button>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-sm font-bold text-slate-400 bg-slate-50 p-4 rounded-xl border border-slate-100">目前尚無專案標籤，可於主畫面右上角點擊「標籤圖示」進行管理。</div>
+                    }
+                </div>
+
+                <div>
+                    <label class="text-xs font-black text-slate-400 uppercase mb-4 block tracking-widest">執行小組選擇 (單選)</label>
+                    @if (AppState.Groups.Count > 0)
+                    {
+                        <div class="flex flex-wrap gap-3">
+                            @foreach (var g in AppState.Groups)
+                            {
+                                <button type="button" @onclick="() => _taskForm.Group = g.Name"
+                                        class="px-6 py-3 rounded-xl text-sm font-black border transition-all @(_taskForm.Group == g.Name ? $"{g.Color?.Active ?? "bg-indigo-600"} text-white shadow-lg" : $"{g.Color?.Bg ?? "bg-slate-50"} {g.Color?.Text ?? "text-slate-500"} border-transparent shadow-sm")">
+                                    @g.Name
+                                </button>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-sm font-bold text-rose-500 bg-rose-50 p-4 rounded-xl border border-rose-100 flex items-center gap-2">
+                            <LucideIcon Name="alert-circle" Class="w-5 h-5" /> 請先關閉此視窗，並點擊右上角設定建立執行小組。
+                        </div>
+                    }
+                </div>
+
+                <div>
+                    <label class="text-xs font-black text-slate-400 uppercase mb-3 block tracking-widest">負責人員 (可多選)</label>
+                    @if (_taskForm.Assignee.Count > 0)
+                    {
+                        <div class="flex flex-wrap gap-2 mb-3">
+                            @foreach (var a in _taskForm.Assignee.ToList())
+                            {
+                                <span class="flex items-center gap-1.5 bg-teal-50 text-teal-700 px-3 py-1.5 rounded-lg text-sm font-bold border border-teal-200">
+                                    @a
+                                    <button type="button" @onclick="() => _taskForm.Assignee.Remove(a)" class="hover:text-rose-500 transition-colors">
+                                        <LucideIcon Name="x" Class="w-3.5 h-3.5" />
+                                    </button>
+                                </span>
+                            }
+                        </div>
+                    }
+                    <div class="flex gap-2">
+                        <input class="flex-1 p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-bold text-base shadow-sm focus:ring-4 focus:ring-indigo-100/50 transition-all"
+                               placeholder="輸入人員名稱後，按 Enter 新增..."
+                               @bind="_assigneeInput"
+                               @onkeydown='e => { if (e.Key == "Enter") AddAssignee(); }' />
+                        <button type="button" @onclick="AddAssignee"
+                                class="px-6 bg-slate-900 text-white rounded-2xl font-black shadow-md hover:bg-slate-800 transition-all active:scale-95">新增</button>
+                    </div>
+                    @if (RememberedAssignees.Any())
+                    {
+                        <div class="mt-4 flex flex-wrap gap-3 items-center">
+                            <span class="text-xs font-black text-slate-400 uppercase tracking-widest">常用記憶：</span>
+                            @foreach (var name in RememberedAssignees)
+                            {
+                                bool isSel = _taskForm.Assignee.Contains(name);
+                                <button type="button"
+                                        @onclick="() => { if (isSel) _taskForm.Assignee.Remove(name); else _taskForm.Assignee.Add(name); }"
+                                        class="px-3 py-1.5 bg-white border border-slate-200 text-slate-500 rounded-lg text-xs font-bold hover:border-teal-400 hover:text-teal-600 transition-all @(isSel ? "ring-2 ring-teal-500 text-teal-700 shadow-sm bg-teal-50" : "")">@name</button>
+                            }
+                        </div>
+                    }
+                </div>
+
+                <div class="grid grid-cols-2 gap-6">
+                    <div>
+                        <label class="text-xs font-black text-slate-400 mb-3 block tracking-widest">開始日期</label>
+                        <input type="date" class="w-full p-5 bg-slate-50 border rounded-2xl font-bold text-base shadow-sm"
+                               @bind="FormStartDate" />
+                    </div>
+                    <div>
+                        <label class="text-xs font-black text-slate-400 mb-3 block tracking-widest">截止日期</label>
+                        <input type="date" class="w-full p-5 bg-slate-50 border rounded-2xl font-bold text-base shadow-sm"
+                               @bind="FormEndDate" />
+                    </div>
+                </div>
+
+                <div class="bg-indigo-50/50 p-6 rounded-3xl border border-indigo-100 space-y-5 shadow-inner">
+                    <div class="flex items-center justify-between">
+                        <label class="text-sm font-black text-indigo-600 uppercase flex items-center gap-3 tracking-widest">
+                            <LucideIcon Name="repeat" Class="w-5 h-5" /> 這是例行性循環任務
+                        </label>
+                        <input type="checkbox" class="w-6 h-6 accent-indigo-600 cursor-pointer shadow-sm"
+                               @bind="_taskForm.IsRecurring" />
+                    </div>
+                    @if (_taskForm.IsRecurring)
+                    {
+                        <div class="flex items-center gap-4 pt-4 border-t border-indigo-100/50">
+                            <span class="text-sm font-black text-indigo-600">每</span>
+                            <input type="number" min="1"
+                                   class="w-20 p-3 bg-white border border-indigo-200 rounded-xl text-center font-bold text-base shadow-sm focus:ring-4 focus:ring-indigo-100 outline-none"
+                                   @bind="_taskForm.RecurrenceInterval" />
+                            <div class="flex bg-white rounded-xl shadow-sm border border-indigo-200 p-1">
+                                @foreach (var (rv, rl) in new[] { ("daily","日"), ("weekly","週"), ("monthly","月") })
+                                {
+                                    <button type="button" @onclick="() => _taskForm.RecurrenceType = rv"
+                                            class="px-4 py-2 rounded-lg text-sm font-black transition-all @(_taskForm.RecurrenceType == rv ? "bg-indigo-100 text-indigo-700" : "text-slate-400 hover:bg-slate-50")">@rl</button>
+                                }
+                            </div>
+                            <span class="text-sm font-black text-indigo-600">自動建立新任務</span>
+                        </div>
+                    }
+                </div>
+
+                <button disabled="@_isSubmittingTask" type="submit"
+                        class="w-full font-black py-6 rounded-[1.5rem] shadow-xl active:scale-95 transition-all text-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-100 disabled:bg-slate-300 disabled:shadow-none">
+                    @if (_isSubmittingTask) { <LucideIcon Name="loader-2" Class="w-6 h-6 animate-spin mx-auto" /> }
+                    else { @(_editingTaskId is not null ? "確認修改" : "確認任務") }
+                </button>
+            </form>
+        </div>
+    </div>
+}

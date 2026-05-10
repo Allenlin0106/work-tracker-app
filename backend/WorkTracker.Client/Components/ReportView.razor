@@ -1,0 +1,129 @@
+<div class="flex-1 overflow-y-auto p-10 space-y-10 bg-slate-50/50 scrollbar-thin">
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-6">
+        <h2 class="text-3xl font-black text-slate-800 flex items-center gap-4 uppercase tracking-tight">
+            <LucideIcon Name='@(ViewMode == "weekly" ? "newspaper" : "book-open")' Class='@($"w-10 h-10 {(ViewMode == "weekly" ? "text-indigo-600" : "text-purple-600")}")' />
+            @(ViewMode == "weekly" ? "週報摘要" : $"{LastMonthLabel} 月報摘要")
+        </h2>
+        <div class="flex flex-wrap items-center gap-4">
+            <button @onclick="() => HideTaggedChanged.InvokeAsync(!HideTagged)"
+                    class="flex items-center gap-2 px-5 py-2.5 rounded-full border shadow-sm text-sm font-black transition-all @(HideTagged ? "bg-indigo-50 border-indigo-200 text-indigo-600 ring-2 ring-indigo-100 ring-offset-1" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50")">
+                <LucideIcon Name="filter" Class="w-4 h-4" />
+                @(HideTagged ? "已隱藏標籤項目" : "隱藏標籤項目")
+            </button>
+            @if (ViewMode == "weekly")
+            {
+                <div class="flex items-center gap-3 bg-white px-5 py-2.5 rounded-full border shadow-sm flex-wrap">
+                    <LucideIcon Name="calendar-days" Class="w-5 h-5 text-slate-400" />
+                    <input type="date" class="bg-transparent text-sm font-black text-slate-600 outline-none cursor-pointer"
+                           @bind="ReportStartDate" />
+                    <span class="text-slate-300">~</span>
+                    <input type="date" class="bg-transparent text-sm font-black text-slate-600 outline-none cursor-pointer"
+                           @bind="ReportEndDate" />
+                    <button @onclick="ResetDateRange"
+                            class="ml-2 p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 transition-colors">
+                        <LucideIcon Name="refresh-cw" Class="w-4 h-4" />
+                    </button>
+                </div>
+            }
+            else
+            {
+                <span class="text-sm font-black text-slate-400 bg-white px-6 py-3 rounded-full border shadow-sm uppercase tracking-widest">範圍：上個完整月份</span>
+            }
+        </div>
+    </div>
+
+    @{ var reportRows = ReportData.ToList(); }
+    @if (reportRows.Count > 0)
+    {
+        <div class="overflow-x-auto scrollbar-thin px-2 pb-6">
+            <table class="w-full text-left border-separate min-w-[1000px]" style="border-spacing: 0 1rem">
+                <thead>
+                    <tr>
+                        <th class="px-8 py-2 text-sm font-black text-slate-400 uppercase tracking-widest w-[30%]">工作項目</th>
+                        <th class="px-8 py-2 text-sm font-black text-slate-400 uppercase tracking-widest w-[35%]">日誌回報</th>
+                        <th class="px-8 py-2 text-sm font-black text-slate-400 uppercase tracking-widest w-[35%]">已完成細項</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in reportRows)
+                    {
+                        var (sLabel, sColor, sIcon) = TaskHelpers.GetTaskStatus(row.Task, AppState.Logs);
+                        var sv = TaskHelpers.GetTaskStatusValue(row.Task, AppState.Logs);
+                        string bgClass  = sv == "done" ? "bg-emerald-50/40" : sv == "doing" ? "bg-blue-50/40" : sv == "delayed" ? "bg-rose-50/40" : "bg-white";
+                        string indClass = sv == "done" ? "border-l-emerald-400" : sv == "doing" ? "border-l-blue-400" : sv == "delayed" ? "border-l-rose-400" : "border-l-slate-300";
+                        var validTags = row.Task.Tags.Where(tName => AppState.Tags.Any(t => t.Name == tName)).ToList();
+                        <tr class="group align-top hover:-translate-y-1 transition-all duration-300 drop-shadow-sm hover:drop-shadow-md">
+                            <td class="px-8 py-6 rounded-l-2xl border-y border-l border-slate-200 border-l-[6px] @indClass @bgClass">
+                                <div class="flex items-start justify-between gap-4 mb-3">
+                                    <h3 class="font-black text-slate-900 text-lg leading-tight">
+                                        @row.Task.Title
+                                        <div class="mt-2"><RecurrenceBadge Task="@row.Task" /></div>
+                                    </h3>
+                                    <button @onclick="() => OnSelectTask.InvokeAsync(row.Task.Id)"
+                                            class="shrink-0 p-2 bg-white border border-slate-200 text-slate-400 hover:text-indigo-600 hover:border-indigo-200 rounded-xl transition-all shadow-sm flex items-center gap-1.5 text-xs font-bold">
+                                        <LucideIcon Name="external-link" Class="w-3.5 h-3.5" /> 詳情
+                                    </button>
+                                </div>
+                                <div class="space-y-1.5">
+                                    <div class="text-xs font-bold text-slate-500 uppercase tracking-tighter flex items-center gap-1.5"><LucideIcon Name="user" Class="w-3.5 h-3.5" /> @TaskHelpers.DisplayAssignee(row.Task.Assignee)</div>
+                                    <div class="text-xs font-bold text-slate-500 uppercase tracking-tighter flex items-center gap-1.5"><LucideIcon Name="layers" Class="w-3.5 h-3.5" /> @row.Task.Group</div>
+                                    <div class="text-xs font-bold text-slate-500 uppercase tracking-tighter flex items-center gap-1.5"><LucideIcon Name="activity" Class="w-3.5 h-3.5" /> 進度 @(row.Task.Progress)%</div>
+                                </div>
+                                @if (validTags.Count > 0)
+                                {
+                                    <div class="flex flex-wrap gap-1 mt-4 pt-4 border-t border-slate-200/50">
+                                        @foreach (var tName in validTags)
+                                        {
+                                            var tObj = AppState.Tags.FirstOrDefault(t => t.Name == tName);
+                                            <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest @(tObj?.Color?.Bg ?? "bg-white") @(tObj?.Color?.Text ?? "text-slate-500") border @(tObj?.Color?.Border ?? "border-slate-200")">@tName</span>
+                                        }
+                                    </div>
+                                }
+                            </td>
+                            <td class="px-8 py-6 border-y border-l border-slate-200 @bgClass">
+                                @if (row.Logs.Count > 0)
+                                {
+                                    <div class="space-y-3">
+                                        @foreach (var l in row.Logs)
+                                        {
+                                            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:bg-indigo-400 before:rounded-l-xl overflow-hidden">
+                                                <p class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed font-medium">@l.Text</p>
+                                                <div class="mt-2 flex items-center gap-1 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                                    <LucideIcon Name="clock" Class="w-3 h-3" />
+                                                    @(l.Timestamp is not null ? DateTime.Parse(l.Timestamp).ToString("yyyy-MM-dd HH:mm") : "傳送中")
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                                else { <div class="h-full flex items-center justify-center text-sm text-slate-300 italic font-bold opacity-50 py-4">無日誌更新</div> }
+                            </td>
+                            <td class="px-8 py-6 rounded-r-2xl border-y border-l border-r border-slate-200 @bgClass">
+                                @if (row.Checklist.Count > 0)
+                                {
+                                    <div class="space-y-3">
+                                        @foreach (var i in row.Checklist)
+                                        {
+                                            <div class="flex items-start gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:bg-emerald-400 before:rounded-l-xl overflow-hidden">
+                                                <LucideIcon Name="check-circle-2" Class="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                                                <div>
+                                                    <p class="text-sm font-bold text-slate-700 leading-tight">@i.Text</p>
+                                                    <span class="text-[10px] font-black text-emerald-600 block mt-1.5 uppercase tracking-widest">完成時間：@i.ActualDoneDate</span>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                                else { <div class="h-full flex items-center justify-center text-sm text-slate-300 italic font-bold opacity-50 py-4">無完成細項</div> }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="py-40 text-center opacity-30 italic font-black text-2xl">此時段無符合過濾條件的更新紀錄</div>
+    }
+</div>

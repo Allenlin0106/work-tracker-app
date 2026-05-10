@@ -1,0 +1,70 @@
+@using WorkTracker.Client.Services
+@using WorkTracker.Client.Models
+
+@if (IsOpen)
+{
+    <div class="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+         @onclick="Close">
+        <div class="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden" @onclick:stopPropagation="true">
+            <div class="px-10 py-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <h3 class="text-xl font-black flex items-center gap-3"><LucideIcon Name="tag" Class="w-6 h-6 text-indigo-500" />專案標籤管理</h3>
+                <button @onclick="Close"><LucideIcon Name="x" Class="w-6 h-6 text-slate-400" /></button>
+            </div>
+            <div class="p-10 space-y-6">
+                <div class="space-y-3 max-h-[300px] overflow-y-auto scrollbar-thin pr-2">
+                    @foreach (var t in AppState.Tags)
+                    {
+                        <div class="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl shadow-sm">
+                            <div class="flex items-center gap-4">
+                                <div class="w-4 h-4 rounded-full @(t.Color?.Active ?? "bg-slate-400")"></div>
+                                <span class="font-bold text-slate-700">@t.Name</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button @onclick="() => { _editingTagId = t.Id; _newTagName = t.Name; _newTagColor = t.Color ?? ColorConstants.TagColors[0]; }"
+                                        class="text-slate-400 hover:text-indigo-600 transition-colors p-2 bg-slate-50 hover:bg-indigo-50 rounded-xl">
+                                    <LucideIcon Name="pencil" Class="w-4 h-4" />
+                                </button>
+                                <button @onclick="() => HandleDeleteTag(t.Id, t.Name)"
+                                        class="text-slate-400 hover:text-rose-500 transition-colors p-2 bg-slate-50 hover:bg-rose-50 rounded-xl">
+                                    <LucideIcon Name="trash-2" Class="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+                    }
+                    @if (!AppState.Tags.Any()) { <p class="text-sm font-bold text-slate-400 text-center py-4">目前尚無標籤</p> }
+                </div>
+                <form @onsubmit:preventDefault @onsubmit="HandleSaveTag" class="bg-slate-50 p-6 rounded-3xl space-y-4 border border-slate-200 shadow-inner">
+                    @if (_editingTagId is not null)
+                    {
+                        <div class="flex items-center justify-between px-3 py-1.5 bg-indigo-50 rounded-lg">
+                            <span class="text-xs font-black text-indigo-600 uppercase">正在編輯標籤...</span>
+                            <button type="button" @onclick="ResetTagForm" class="text-indigo-400 hover:text-rose-500"><LucideIcon Name="x" Class="w-4 h-4" /></button>
+                        </div>
+                    }
+                    <input type="text" placeholder="輸入新標籤名稱..."
+                           class="w-full px-5 py-4 bg-white border border-slate-200 rounded-2xl outline-none font-bold shadow-sm focus:ring-4 focus:ring-indigo-100/50 transition-all"
+                           @bind="_newTagName" />
+                    <div class="grid grid-cols-9 gap-3">
+                        @foreach (var c in ColorConstants.TagColors)
+                        {
+                            <button type="button" @onclick="() => _newTagColor = c"
+                                    class="w-8 h-8 rounded-full border-2 transition-all @c.Active @(_newTagColor?.Label == c.Label ? "ring-4 ring-indigo-500/20 scale-110 border-white shadow-md" : "border-transparent opacity-60")">
+                            </button>
+                        }
+                    </div>
+                    <div class="flex gap-3">
+                        @if (_editingTagId is not null)
+                        {
+                            <button type="button" @onclick="ResetTagForm" class="w-1/3 bg-slate-200 text-slate-600 font-black py-4 rounded-2xl shadow-sm active:scale-95">取消</button>
+                        }
+                        <button disabled="@(_isSavingTag || string.IsNullOrWhiteSpace(_newTagName))" type="submit"
+                                class="flex-1 bg-slate-900 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 flex items-center justify-center gap-2 disabled:bg-slate-300 disabled:shadow-none">
+                            @if (_isSavingTag) { <LucideIcon Name="loader-2" Class="w-4 h-4 animate-spin" /> }
+                            else { @(_editingTagId is not null ? "儲存修改" : "新增標籤") }
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+}

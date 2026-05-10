@@ -1,0 +1,70 @@
+@using WorkTracker.Client.Services
+@using WorkTracker.Client.Models
+
+@if (IsOpen)
+{
+    <div class="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+         @onclick="Close">
+        <div class="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden" @onclick:stopPropagation="true">
+            <div class="px-10 py-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <h3 class="text-xl font-black flex items-center gap-3"><LucideIcon Name="layers" Class="w-6 h-6 text-indigo-500" />執行小組管理</h3>
+                <button @onclick="Close"><LucideIcon Name="x" Class="w-6 h-6 text-slate-400" /></button>
+            </div>
+            <div class="p-10 space-y-6">
+                <div class="space-y-3 max-h-[300px] overflow-y-auto scrollbar-thin pr-2">
+                    @foreach (var g in AppState.Groups)
+                    {
+                        <div class="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl shadow-sm">
+                            <div class="flex items-center gap-4">
+                                <div class="w-4 h-4 rounded-full @(g.Color?.Active ?? "bg-slate-400")"></div>
+                                <span class="font-bold text-slate-700">@g.Name</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button @onclick="() => { _editingGroupId = g.Id; _newGroupName = g.Name; _newGroupColor = g.Color ?? ColorConstants.GroupColors[0]; }"
+                                        class="text-slate-400 hover:text-indigo-600 transition-colors p-2 bg-slate-50 hover:bg-indigo-50 rounded-xl">
+                                    <LucideIcon Name="pencil" Class="w-4 h-4" />
+                                </button>
+                                <button @onclick="() => HandleDeleteGroup(g.Id, g.Name)"
+                                        class="text-slate-400 hover:text-rose-500 transition-colors p-2 bg-slate-50 hover:bg-rose-50 rounded-xl">
+                                    <LucideIcon Name="trash-2" Class="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+                    }
+                    @if (!AppState.Groups.Any()) { <p class="text-sm font-bold text-slate-400 text-center py-4">目前尚無小組</p> }
+                </div>
+                <form @onsubmit:preventDefault @onsubmit="HandleSaveGroup" class="bg-slate-50 p-6 rounded-3xl space-y-4 border border-slate-200 shadow-inner">
+                    @if (_editingGroupId is not null)
+                    {
+                        <div class="flex items-center justify-between px-3 py-1.5 bg-indigo-50 rounded-lg">
+                            <span class="text-xs font-black text-indigo-600 uppercase">正在編輯小組...</span>
+                            <button type="button" @onclick="ResetGroupForm" class="text-indigo-400 hover:text-rose-500"><LucideIcon Name="x" Class="w-4 h-4" /></button>
+                        </div>
+                    }
+                    <input type="text" placeholder="輸入新小組名稱..."
+                           class="w-full px-5 py-4 bg-white border border-slate-200 rounded-2xl outline-none font-bold shadow-sm focus:ring-4 focus:ring-indigo-100/50 transition-all"
+                           @bind="_newGroupName" />
+                    <div class="flex flex-wrap gap-2">
+                        @foreach (var c in ColorConstants.GroupColors)
+                        {
+                            <button type="button" @onclick="() => _newGroupColor = c"
+                                    class="w-8 h-8 rounded-full border-2 transition-all @c.Active @(_newGroupColor?.Label == c.Label ? "ring-4 ring-indigo-500/20 scale-110 border-white shadow-md" : "border-transparent opacity-60")">
+                            </button>
+                        }
+                    </div>
+                    <div class="flex gap-3">
+                        @if (_editingGroupId is not null)
+                        {
+                            <button type="button" @onclick="ResetGroupForm" class="w-1/3 bg-slate-200 text-slate-600 font-black py-4 rounded-2xl shadow-sm active:scale-95">取消</button>
+                        }
+                        <button disabled="@(_isSavingGroup || string.IsNullOrWhiteSpace(_newGroupName))" type="submit"
+                                class="flex-1 bg-slate-900 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 flex items-center justify-center gap-2 disabled:bg-slate-300 disabled:shadow-none">
+                            @if (_isSavingGroup) { <LucideIcon Name="loader-2" Class="w-4 h-4 animate-spin" /> }
+                            else { @(_editingGroupId is not null ? "儲存修改" : "新增小組成員") }
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+}
