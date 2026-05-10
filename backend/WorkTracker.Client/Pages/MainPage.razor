@@ -78,9 +78,9 @@
                         @foreach (var g in AppState.Groups)
                         {
                             <FilterChip Label="@g.Name" IsActive="@_filters.Groups.Contains(g.Name)"
-                                        OnClick="@(() => ToggleFilter("groups", g.Name))"
-                                        ActiveClass="@(g.Color?.Active ?? "bg-indigo-600")"
-                                        UnselectedClass="@($"{g.Color?.Bg ?? "bg-slate-50"} {g.Color?.Text ?? "text-slate-500"} border-transparent shadow-sm")" />
+                                        OnClick='@(() => ToggleFilter("groups", g.Name))'
+                                        ActiveClass='@(g.Color?.Active ?? "bg-indigo-600")'
+                                        UnselectedClass='@($"{g.Color?.Bg ?? "bg-slate-50"} {g.Color?.Text ?? "text-slate-500"} border-transparent shadow-sm")' />
                         }
                     </div>
                 </div>
@@ -96,9 +96,9 @@
                             @foreach (var t in ActiveTags)
                             {
                                 <FilterChip Label="@t.Name" IsActive="@_filters.Tags.Contains(t.Name)"
-                                            OnClick="@(() => ToggleFilter("tags", t.Name))"
-                                            ActiveClass="@(t.Color?.Active ?? "bg-indigo-600")"
-                                            UnselectedClass="@($"{t.Color?.Bg ?? "bg-slate-50"} {t.Color?.Text ?? "text-slate-500"} border-transparent shadow-sm")" />
+                                            OnClick='@(() => ToggleFilter("tags", t.Name))'
+                                            ActiveClass='@(t.Color?.Active ?? "bg-indigo-600")'
+                                            UnselectedClass='@($"{t.Color?.Bg ?? "bg-slate-50"} {t.Color?.Text ?? "text-slate-500"} border-transparent shadow-sm")' />
                             }
                         </div>
                     }
@@ -116,9 +116,9 @@
                                 @foreach (var t in CompletedTags)
                                 {
                                     <FilterChip Label="@t.Name" IsActive="@_filters.Tags.Contains(t.Name)"
-                                                OnClick="@(() => ToggleFilter("tags", t.Name))"
-                                                ActiveClass="@(t.Color?.Active ?? "bg-indigo-600")"
-                                                UnselectedClass="@($"{t.Color?.Bg ?? "bg-slate-50"} {t.Color?.Text ?? "text-slate-500"} border-transparent shadow-sm")" />
+                                                OnClick='@(() => ToggleFilter("tags", t.Name))'
+                                                ActiveClass='@(t.Color?.Active ?? "bg-indigo-600")'
+                                                UnselectedClass='@($"{t.Color?.Bg ?? "bg-slate-50"} {t.Color?.Text ?? "text-slate-500"} border-transparent shadow-sm")' />
                                 }
                             </div>
                         </div>
@@ -134,7 +134,7 @@
                         @foreach (var name in AllUniqueAssignees)
                         {
                             <FilterChip Label="@name" IsActive="@_filters.Assignees.Contains(name)"
-                                        OnClick="@(() => ToggleFilter("assignees", name))"
+                                        OnClick='@(() => ToggleFilter("assignees", name))'
                                         ActiveClass="bg-teal-600"
                                         UnselectedClass="bg-slate-50 text-slate-500 border-transparent shadow-sm" />
                         }
@@ -197,7 +197,7 @@
                                         工作項目
                                         <span class="text-slate-300 group-hover:text-indigo-400 transition-colors">
                                             @if (_sortConfig.Key == "title")
-                                            { <LucideIcon Name="@(_sortConfig.Dir == "asc" ? "chevron-up" : "chevron-down")" Class="w-4 h-4" /> }
+                                            { <LucideIcon Name='@(_sortConfig.Dir == "asc" ? "chevron-up" : "chevron-down")' Class="w-4 h-4" /> }
                                             else { <LucideIcon Name="arrow-up-down" Class="w-4 h-4 opacity-50" /> }
                                         </span>
                                     </div>
@@ -207,7 +207,7 @@
                                         執行小組與人員
                                         <span class="text-slate-300 group-hover:text-indigo-400 transition-colors">
                                             @if (_sortConfig.Key == "group")
-                                            { <LucideIcon Name="@(_sortConfig.Dir == "asc" ? "chevron-up" : "chevron-down")" Class="w-4 h-4" /> }
+                                            { <LucideIcon Name='@(_sortConfig.Dir == "asc" ? "chevron-up" : "chevron-down")' Class="w-4 h-4" /> }
                                             else { <LucideIcon Name="arrow-up-down" Class="w-4 h-4 opacity-50" /> }
                                         </span>
                                     </div>
@@ -323,7 +323,7 @@
                                 <div class="w-80 shrink-0 border-r border-slate-200 bg-white px-8 py-5 sticky left-0 z-20 flex items-center gap-4 shadow-md shadow-slate-100/50">
                                     <button @onclick="() => { if (_expandedTasks.Contains(task.Id)) _expandedTasks.Remove(task.Id); else _expandedTasks.Add(task.Id); }"
                                             class="text-slate-300 hover:text-indigo-600 transition-all">
-                                        <LucideIcon Name="@(isExpanded ? "chevron-down" : "chevron-right")" Class="w-5 h-5" />
+                                        <LucideIcon Name='@(isExpanded ? "chevron-down" : "chevron-right")' Class="w-5 h-5" />
                                     </button>
                                     <div class="overflow-hidden cursor-pointer" @onclick="() => _selectedTaskId = task.Id">
                                         <div class="text-base font-black truncate text-slate-700 flex items-center gap-2">
@@ -381,7 +381,7 @@
                 <div class="flex-1 overflow-y-auto p-10 space-y-10 bg-slate-50/50 scrollbar-thin">
                     <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-6">
                         <h2 class="text-3xl font-black text-slate-800 flex items-center gap-4 uppercase tracking-tight">
-                            <LucideIcon Name="@(_viewMode == "weekly" ? "newspaper" : "book-open")" Class="w-10 h-10 @(_viewMode == "weekly" ? "text-indigo-600" : "text-purple-600")" />
+                            <LucideIcon Name='@(_viewMode == "weekly" ? "newspaper" : "book-open")' Class='@($"w-10 h-10 {(_viewMode == "weekly" ? "text-indigo-600" : "text-purple-600")}")' />
                             @(_viewMode == "weekly" ? "週報摘要" : $"{LastMonthLabel} 月報摘要")
                         </h2>
                         <div class="flex flex-wrap items-center gap-4">
