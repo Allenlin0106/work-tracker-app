@@ -768,7 +768,7 @@
                         <textarea rows="2" placeholder="撰寫回報..."
                                   class="flex-1 px-4 py-3 bg-transparent text-sm font-bold outline-none resize-none"
                                   @bind="_newLogText" @bind:event="oninput"
-                                  @onkeydown="async e => { if (e.Key == "Enter" && !e.ShiftKey) { await HandleSendLog(); } }">@_newLogText</textarea>
+                                  @onkeydown="async e => { if (e.Key == "Enter" && !e.ShiftKey) { await HandleSendLog(); } }"></textarea>
                         <button @onclick="HandleSendLog"
                                 class="px-5 rounded-xl active:scale-90 transition-all shadow-lg self-end mb-1 mr-1 py-4 @(_editingLogId is not null ? "bg-indigo-600 text-white" : "bg-slate-900 text-white")">
                             @if (_editingLogId is not null) { <LucideIcon Name="check-circle" Class="w-6 h-6" /> }
@@ -874,7 +874,7 @@
                         <input class="flex-1 p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-bold text-base shadow-sm focus:ring-4 focus:ring-indigo-100/50 transition-all"
                                placeholder="輸入人員名稱後，按 Enter 新增..."
                                @bind="_assigneeInput"
-                               @onkeydown="e => { if (e.Key == "Enter") { e.IsDefaultPrevented(); AddAssignee(); } }" />
+                               @onkeydown="e => { if (e.Key == "Enter") AddAssignee(); }" />
                         <button type="button" @onclick="AddAssignee"
                                 class="px-6 bg-slate-900 text-white rounded-2xl font-black shadow-md hover:bg-slate-800 transition-all active:scale-95">新增</button>
                     </div>

@@ -100,8 +100,10 @@ public partial class MainPage : IDisposable
                 return (LocalMidnight(_reportRangeStart), ParseDate(_reportRangeEnd).Date.AddDays(1).AddSeconds(-1));
             if (_viewMode == "monthly")
             {
-                var now = DateTime.Today;
-                return (new DateTime(now.Year, now.Month == 1 ? now.Year - 1 : now.Year, now.Month == 1 ? 12 : now.Month - 1, 0, 0, 0),
+                var now      = DateTime.Today;
+                int prevYear  = now.Month == 1 ? now.Year - 1 : now.Year;
+                int prevMonth = now.Month == 1 ? 12 : now.Month - 1;
+                return (new DateTime(prevYear, prevMonth, 1),
                         new DateTime(now.Year, now.Month, 1).AddSeconds(-1));
             }
             return null;
