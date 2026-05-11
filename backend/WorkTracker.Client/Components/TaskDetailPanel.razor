@@ -4,10 +4,8 @@
 
 @if (Task is not null)
 {
-    @{
-        var (dLabel, dColor, dIcon) = TaskHelpers.GetTaskStatus(Task, AppState.Logs);
-        var validTagsD = Task.Tags.Where(tName => AppState.Tags.Any(t => t.Name == tName)).ToList();
-    }
+    var (dLabel, dColor, dIcon) = TaskHelpers.GetTaskStatus(Task, AppState.Logs);
+    var validTagsD = Task.Tags.Where(tName => AppState.Tags.Any(t => t.Name == tName)).ToList();
 
     <div class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md"
          @onclick="OnClose">
