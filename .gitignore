@@ -27,6 +27,9 @@ backend/WorkTracker/obj/
 backend/WorkTracker.Client/bin/
 backend/WorkTracker.Client/obj/
 
+# Tailwind 建置工具（node_modules 不進 git，app.css 需進 git）
+backend/node_modules/
+
 # 系統
 .DS_Store
 Thumbs.db
