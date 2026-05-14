@@ -12,6 +12,7 @@ import { socket } from './lib/socket';
 import { apiPost, apiPatch, apiDelete } from './lib/api';
 import { isSafeUrl, PASSWORD_HINT, isStrongPassword } from './lib/security';
 import AccountsPage from './pages/AccountsPage';
+import LogsQueryPage from './pages/LogsQueryPage';
 
 // --- 1. 核心常數定義 ---
 
@@ -973,13 +974,13 @@ export default function App() {
         </div>
         <div className="flex items-center gap-4">
           <div className="flex bg-slate-100 p-1.5 rounded-xl shadow-inner border border-slate-200">
-            {['list', 'gantt', 'weekly', 'monthly', ...(currentRole === 'admin' ? ['accounts'] : [])].map(m => (
+            {['list', 'gantt', 'weekly', 'monthly', 'logs', ...(currentRole === 'admin' ? ['accounts'] : [])].map(m => (
               <button
                 key={m}
                 onClick={() => { setViewMode(m); setFilters(prev => ({ ...prev, statuses: [] })); }}
                 className={`px-6 py-2 rounded-lg text-base font-bold transition-all ${viewMode === m ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
               >
-                {m === 'list' ? '列表' : m === 'gantt' ? '甘特圖' : m === 'weekly' ? '週報' : m === 'monthly' ? '月報' : m === 'accounts' ? '帳號管理' : ''}
+                {m === 'list' ? '列表' : m === 'gantt' ? '甘特圖' : m === 'weekly' ? '週報' : m === 'monthly' ? '月報' : m === 'logs' ? '日誌查詢' : m === 'accounts' ? '帳號管理' : ''}
               </button>
             ))}
           </div>
@@ -998,6 +999,8 @@ export default function App() {
       <main className="flex-1 p-4 md:p-8 max-w-[1600px] mx-auto w-full flex flex-col overflow-hidden">
         {viewMode === 'accounts' && currentRole === 'admin' ? (
           <AccountsPage currentUserId={currentUserId} />
+        ) : viewMode === 'logs' ? (
+          <LogsQueryPage logs={logs} tasks={tasks} />
         ) : (
         <>
         <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-8 mb-8">
