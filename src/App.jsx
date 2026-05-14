@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
+import {
   LayoutDashboard, Plus, CheckCircle2, Clock, AlertCircle, Filter,
-  Search, Trash2, Calendar, List, MessageSquare, X, Send, 
-  CheckSquare, Square, AlertTriangle, ChevronRight, ArrowUpDown, 
-  User, Layers, Activity, ChevronDown, ChevronUp, Pencil, Repeat, Loader2, 
+  Search, Trash2, Calendar, List, MessageSquare, X, Send,
+  CheckSquare, Square, AlertTriangle, ChevronRight, ArrowUpDown,
+  User, Layers, Activity, ChevronDown, ChevronUp, Pencil, Repeat, Loader2,
   CheckCircle, BookOpen, Settings2, Check, Timer, CalendarDays, Target, RefreshCw,
   Newspaper, HardDrive, CheckCircle as CheckIcon, Tag,
   Link, Image as ImageIcon, Paperclip, ExternalLink, Upload
 } from 'lucide-react';
-import { io } from 'socket.io-client';
+import { socket } from './lib/socket';
+import { apiPost, apiPatch, apiDelete } from './lib/api';
+import { isSafeUrl, PASSWORD_HINT, isStrongPassword } from './lib/security';
 
 // --- 1. 核心常數定義 ---
 
@@ -166,54 +168,7 @@ const RecurrenceBadgeDisplay = ({ task }) => {
   );
 };
 
-// --- 4. Socket.io + REST API 初始化 ---
-
-const socket = io({ autoConnect: false });
-
-const API_BASE = '/api';
-const getToken = () => localStorage.getItem('wt_token');
-
-// URL 協定白名單：阻擋 javascript:/data:/file: 等可造成 XSS 的協定。
-// data:image/... 為前端 compressImage 產出的影像，允許。
-const SAFE_URL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:']);
-const isSafeUrl = (str) => {
-  if (typeof str !== 'string') return false;
-  const trimmed = str.trim();
-  if (!trimmed) return false;
-  if (trimmed.startsWith('data:image/')) return true;
-  try {
-    return SAFE_URL_PROTOCOLS.has(new URL(trimmed).protocol);
-  } catch {
-    return false;
-  }
-};
-
-// 密碼強度規則：>=12 字、含大寫/小寫/數字（與後端一致）
-const PASSWORD_HINT = '密碼至少 12 字元，需包含大寫、小寫、數字';
-const isStrongPassword = (pw) =>
-  typeof pw === 'string' && pw.length >= 12 && /[A-Z]/.test(pw) && /[a-z]/.test(pw) && /[0-9]/.test(pw);
-
-const apiPost = (col, data) =>
-  fetch(`${API_BASE}/${col}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
-    body: JSON.stringify(data),
-  }).then(r => r.json());
-
-const apiPatch = (col, id, data) =>
-  fetch(`${API_BASE}/${col}/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
-    body: JSON.stringify(data),
-  });
-
-const apiDelete = (col, id) =>
-  fetch(`${API_BASE}/${col}/${id}`, {
-    method: 'DELETE',
-    headers: { 'Authorization': `Bearer ${getToken()}` },
-  });
-
-// --- 5. 主應用組件 ---
+// --- 4. 主應用組件 ---
 
 export default function App() {
   const [authState, setAuthState] = useState(() => localStorage.getItem('wt_token') ? 'loading' : 'check');
