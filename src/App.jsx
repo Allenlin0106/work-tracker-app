@@ -11,6 +11,7 @@ import {
 import { socket } from './lib/socket';
 import { apiPost, apiPatch, apiDelete } from './lib/api';
 import { isSafeUrl, PASSWORD_HINT, isStrongPassword } from './lib/security';
+import AccountsPage from './pages/AccountsPage';
 
 // --- 1. 核心常數定義 ---
 
@@ -176,6 +177,8 @@ export default function App() {
   const [loginError, setLoginError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [currentUsername, setCurrentUsername] = useState(() => localStorage.getItem('wt_username') || '');
+  const [currentRole, setCurrentRole] = useState(() => localStorage.getItem('wt_role') || 'user');
+  const [currentUserId, setCurrentUserId] = useState(() => localStorage.getItem('wt_user_id') || '');
   const [tasks, setTasks] = useState([]);
   const [logs, setLogs] = useState([]);
   const [groups, setGroups] = useState([]);
@@ -288,6 +291,26 @@ export default function App() {
     };
   }, []);
 
+  const decodeJwt = (token) => {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload || {};
+    } catch {
+      return {};
+    }
+  };
+
+  const persistAuth = (data) => {
+    const payload = decodeJwt(data.token);
+    localStorage.setItem('wt_token', data.token);
+    localStorage.setItem('wt_username', data.username);
+    localStorage.setItem('wt_role', data.role || payload.role || 'user');
+    localStorage.setItem('wt_user_id', payload.userId || '');
+    setCurrentUsername(data.username);
+    setCurrentRole(data.role || payload.role || 'user');
+    setCurrentUserId(payload.userId || '');
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setIsLoggingIn(true);
@@ -300,9 +323,7 @@ export default function App() {
       });
       const data = await r.json();
       if (!r.ok) { setLoginError(data.error || '登入失敗'); return; }
-      localStorage.setItem('wt_token', data.token);
-      localStorage.setItem('wt_username', data.username);
-      setCurrentUsername(data.username);
+      persistAuth(data);
       socket.auth = { token: data.token };
       socket.connect();
       setAuthState('loading');
@@ -330,9 +351,7 @@ export default function App() {
       });
       const data = await r.json();
       if (!r.ok) { setLoginError(data.error || '建立失敗'); return; }
-      localStorage.setItem('wt_token', data.token);
-      localStorage.setItem('wt_username', data.username);
-      setCurrentUsername(data.username);
+      persistAuth(data);
       socket.auth = { token: data.token };
       socket.connect();
       setAuthState('loading');
@@ -346,9 +365,13 @@ export default function App() {
   const handleLogout = () => {
     localStorage.removeItem('wt_token');
     localStorage.removeItem('wt_username');
+    localStorage.removeItem('wt_role');
+    localStorage.removeItem('wt_user_id');
     socket.disconnect();
     setAuthState('login');
     setCurrentUsername('');
+    setCurrentRole('user');
+    setCurrentUserId('');
     setTasks([]);
     setLogs([]);
     setGroups([]);
@@ -950,13 +973,13 @@ export default function App() {
         </div>
         <div className="flex items-center gap-4">
           <div className="flex bg-slate-100 p-1.5 rounded-xl shadow-inner border border-slate-200">
-            {['list', 'gantt', 'weekly', 'monthly'].map(m => (
-              <button 
-                key={m} 
-                onClick={() => { setViewMode(m); setFilters(prev => ({ ...prev, statuses: [] })); }} 
+            {['list', 'gantt', 'weekly', 'monthly', ...(currentRole === 'admin' ? ['accounts'] : [])].map(m => (
+              <button
+                key={m}
+                onClick={() => { setViewMode(m); setFilters(prev => ({ ...prev, statuses: [] })); }}
                 className={`px-6 py-2 rounded-lg text-base font-bold transition-all ${viewMode === m ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
               >
-                {m === 'list' ? '列表' : m === 'gantt' ? '甘特圖' : m === 'weekly' ? '週報' : m === 'monthly' ? '月報' : ''}
+                {m === 'list' ? '列表' : m === 'gantt' ? '甘特圖' : m === 'weekly' ? '週報' : m === 'monthly' ? '月報' : m === 'accounts' ? '帳號管理' : ''}
               </button>
             ))}
           </div>
@@ -973,6 +996,10 @@ export default function App() {
       </header>
 
       <main className="flex-1 p-4 md:p-8 max-w-[1600px] mx-auto w-full flex flex-col overflow-hidden">
+        {viewMode === 'accounts' && currentRole === 'admin' ? (
+          <AccountsPage currentUserId={currentUserId} />
+        ) : (
+        <>
         <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-8 mb-8">
           <div className="flex items-center gap-4">
             <div className="flex items-center bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 shadow-inner flex-1">
@@ -1365,6 +1392,8 @@ export default function App() {
             </div>
           )}
         </div>
+        </>
+        )}
       </main>
 
       {/* 詳情視窗 */}

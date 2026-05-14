@@ -26,10 +26,11 @@ router.post('/auth/setup', authLimiter, async (req, res, next) => {
     if (!username || !password) return res.status(400).json({ error: '帳號與密碼為必填' });
     if (!validatePassword(password)) return res.status(400).json({ error: PASSWORD_RULE_MSG });
     const passwordHash = await bcrypt.hash(password, 12);
-    const user = await User.create({ username, passwordHash });
-    const token = jwt.sign({ userId: user._id.toString(), username }, JWT_SECRET, { expiresIn: '30d' });
+    // 第一位使用者自動成為 admin
+    const user = await User.create({ username, passwordHash, role: 'admin' });
+    const token = jwt.sign({ userId: user._id.toString(), username, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
     logAudit('auth.setup.success', user._id.toString(), { ip: req.ip, username });
-    res.json({ token, username });
+    res.json({ token, username, role: user.role });
   } catch (err) {
     next(err);
   }
@@ -44,14 +45,18 @@ router.post('/auth/login', authLimiter, async (req, res, next) => {
       logAudit('auth.login.fail', null, { ip: req.ip, username, reason: 'no_user' });
       return res.status(401).json({ error: '帳號或密碼錯誤' });
     }
+    if (user.disabled) {
+      logAudit('auth.login.fail', user._id.toString(), { ip: req.ip, username, reason: 'disabled' });
+      return res.status(401).json({ error: '帳號已停用' });
+    }
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) {
       logAudit('auth.login.fail', user._id.toString(), { ip: req.ip, username, reason: 'bad_pw' });
       return res.status(401).json({ error: '帳號或密碼錯誤' });
     }
-    const token = jwt.sign({ userId: user._id.toString(), username }, JWT_SECRET, { expiresIn: '30d' });
+    const token = jwt.sign({ userId: user._id.toString(), username, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
     logAudit('auth.login.success', user._id.toString(), { ip: req.ip, username });
-    res.json({ token, username });
+    res.json({ token, username, role: user.role });
   } catch (err) {
     next(err);
   }

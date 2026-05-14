@@ -26,3 +26,40 @@ export const apiDelete = (col, id) =>
     method: 'DELETE',
     headers: authHeaders(),
   });
+
+const handleJson = async (r) => {
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  return data;
+};
+
+export const usersApi = {
+  list: () => fetch(`${API_BASE}/users`, { headers: authHeaders() }).then(handleJson),
+  create: (payload) => fetch(`${API_BASE}/users`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  }).then(handleJson),
+  update: (id, payload) => fetch(`${API_BASE}/users/${id}`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  }).then(handleJson),
+  resetPassword: (id, password) => fetch(`${API_BASE}/users/${id}/reset-password`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ password }),
+  }).then(handleJson),
+  disable: (id) => fetch(`${API_BASE}/users/${id}/disable`, {
+    method: 'POST',
+    headers: authHeaders(),
+  }).then(handleJson),
+  enable: (id) => fetch(`${API_BASE}/users/${id}/enable`, {
+    method: 'POST',
+    headers: authHeaders(),
+  }).then(handleJson),
+  remove: (id) => fetch(`${API_BASE}/users/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  }).then(handleJson),
+};

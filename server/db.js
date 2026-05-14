@@ -12,8 +12,22 @@ const connect = () =>
 const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
   passwordHash: { type: String, required: true },
+  role: { type: String, enum: ['admin', 'user'], default: 'user' },
+  disabled: { type: Boolean, default: false },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, default: null },
 }, { timestamps: true });
 const User = mongoose.model('User', userSchema, 'users');
+
+// 啟動後遷移：若無任何 admin，把最早建立的使用者升為 admin（保留既有單帳號 setup 流程）
+const ensureFirstAdmin = async () => {
+  const adminCount = await User.countDocuments({ role: 'admin' });
+  if (adminCount > 0) return;
+  const oldest = await User.findOne({}).sort({ createdAt: 1 });
+  if (!oldest) return;
+  oldest.role = 'admin';
+  await oldest.save();
+  console.log(`[DB] Promoted user "${oldest.username}" to admin (no admin existed)`);
+};
 
 const flexSchema = new mongoose.Schema({}, { strict: false, timestamps: true });
 const COLLECTIONS = ['tasks', 'logs', 'groups', 'tags'];
@@ -37,4 +51,4 @@ const stripDoc = (d) => {
   return obj;
 };
 
-module.exports = { connect, User, models, COLLECTIONS, toDoc, stripDoc };
+module.exports = { connect, ensureFirstAdmin, User, models, COLLECTIONS, toDoc, stripDoc };

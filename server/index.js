@@ -9,6 +9,7 @@ const db = require('./db');
 const { apiLimiter } = require('./middleware/rateLimit');
 const { logAudit } = require('./lib/audit');
 const authRoutes = require('./routes/auth');
+const usersRoutes = require('./routes/users');
 const buildCrudRouter = require('./routes/crud');
 const sockets = require('./sockets');
 
@@ -26,11 +27,12 @@ app.use(morgan('combined'));
 
 app.use('/api', apiLimiter);
 
-db.connect();
+db.connect().then(() => db.ensureFirstAdmin()).catch(() => {});
 
 sockets.init(server);
 
 app.use('/api', authRoutes);
+app.use('/api', usersRoutes);
 app.use('/api', buildCrudRouter(sockets.broadcastCollection));
 
 // 全域錯誤處理：統一回應，不洩漏 stack / 內部訊息
