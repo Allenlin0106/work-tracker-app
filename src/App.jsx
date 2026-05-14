@@ -173,6 +173,26 @@ const socket = io({ autoConnect: false });
 const API_BASE = '/api';
 const getToken = () => localStorage.getItem('wt_token');
 
+// URL 協定白名單：阻擋 javascript:/data:/file: 等可造成 XSS 的協定。
+// data:image/... 為前端 compressImage 產出的影像，允許。
+const SAFE_URL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:']);
+const isSafeUrl = (str) => {
+  if (typeof str !== 'string') return false;
+  const trimmed = str.trim();
+  if (!trimmed) return false;
+  if (trimmed.startsWith('data:image/')) return true;
+  try {
+    return SAFE_URL_PROTOCOLS.has(new URL(trimmed).protocol);
+  } catch {
+    return false;
+  }
+};
+
+// 密碼強度規則：>=12 字、含大寫/小寫/數字（與後端一致）
+const PASSWORD_HINT = '密碼至少 12 字元，需包含大寫、小寫、數字';
+const isStrongPassword = (pw) =>
+  typeof pw === 'string' && pw.length >= 12 && /[A-Z]/.test(pw) && /[a-z]/.test(pw) && /[0-9]/.test(pw);
+
 const apiPost = (col, data) =>
   fetch(`${API_BASE}/${col}`, {
     method: 'POST',
@@ -342,6 +362,11 @@ export default function App() {
     e.preventDefault();
     setIsLoggingIn(true);
     setLoginError('');
+    if (!isStrongPassword(loginForm.password)) {
+      setLoginError(PASSWORD_HINT);
+      setIsLoggingIn(false);
+      return;
+    }
     try {
       const r = await fetch('/api/auth/setup', {
         method: 'POST',
@@ -714,6 +739,10 @@ export default function App() {
     if(!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
       finalUrl = 'https://' + finalUrl;
     }
+    if (!isSafeUrl(finalUrl)) {
+      setFormError('連結網址不安全（僅允許 http/https/mailto/tel）');
+      return;
+    }
     const newAttachment = { id: Date.now(), type: 'link', url: finalUrl, name: detailLinkName.trim() || finalUrl };
     const updatedAttachments = [...currentAttachments, newAttachment];
     await apiPatch('tasks', taskId, { attachments: updatedAttachments });
@@ -940,6 +969,7 @@ export default function App() {
                 onChange={e => setLoginForm(f => ({ ...f, password: e.target.value }))}
                 required
               />
+              {isSetup && <p className="text-xs text-slate-500 mt-2">{PASSWORD_HINT}</p>}
             </div>
             <button
               type="submit"
@@ -1444,7 +1474,7 @@ export default function App() {
 
                 {currentTaskInMemo.attachments && currentTaskInMemo.attachments.length > 0 && (
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-                    {currentTaskInMemo.attachments.map(att => (
+                    {currentTaskInMemo.attachments.filter(att => isSafeUrl(att.url)).map(att => (
                       <div key={att.id} className="relative group">
                         {att.type === 'image' ? (
                           // 修改：點擊圖片時設定 previewImage 狀態
