@@ -1,7 +1,7 @@
 # 後端資料庫評估：MongoDB vs PostgreSQL
 
-> 評估版本：對應 git branch `claude/verify-content-ZxftO`（Phase 1–3 後）
-> 評估日：2026-05-14
+> 評估版本：對應 git branch `claude/verify-content-ZxftO`（commit `33309f5`，Phase 1–4 完成後）
+> 評估日：2026-05-14（v1.0：本文於 Phase 4 加入後即反映現況，無內容變更）
 > 範圍：後端資料層；不評估 client-side 儲存
 
 ---

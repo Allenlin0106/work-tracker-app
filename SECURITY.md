@@ -30,7 +30,8 @@
 - **R6 速率限制**：登入 5 次/15 分鐘、一般 API 300 次/5 分鐘
 - **R7 HTTP 安全標頭**：Helmet + Nginx（HSTS、CSP、X-Frame-Options、X-Content-Type-Options、Referrer-Policy、Permissions-Policy）
 - **R8 備份**：mongodump 每日 + 30 天輪替
-- **稽核日誌**：登入/登出/CRUD/錯誤事件以 JSON 寫入 stdout（由 docker logs 收集）
+- **RBAC（admin/user 兩層）**：第一位使用者自動成為 admin；admin 可管理帳號（建立 / 停用 / 啟用 / 重設密碼 / 刪除），且系統保留至少一位啟用的 admin；tasks 與 logs 依 owner 過濾，非 admin 僅看自己份
+- **稽核日誌**：登入/登出/CRUD/帳號變更/錯誤事件以 JSON 寫入 stdout（由 docker logs 收集）
 
 ## 變更管理
 
@@ -42,5 +43,5 @@
 ## 不在保固範圍
 
 - 自簽憑證需使用者手動信任，瀏覽器將顯示憑證警告（內網部署可接受）。
-- 客戶端為 SPA，token 儲存於 localStorage，受 XSS 影響時存在外洩風險；本專案以多層防護降低 XSS 機率（CSP / 輸入消毒 / URL 白名單）。
-- 後端不提供多租戶資料隔離（所有授權使用者可讀寫所有資料）；多租戶情境請等待後續 RBAC 補強。
+- 客戶端為 SPA，token 與 role 儲存於 localStorage，受 XSS 影響時存在外洩風險；本專案以多層防護降低 XSS 機率（CSP / 輸入消毒 / URL 白名單）。
+- 後端目前為單一租戶 admin/user 模型；非 admin 僅可讀寫自己 owner 的 tasks / logs；尚未提供「多租戶 + 群組共享」更細粒度授權。
