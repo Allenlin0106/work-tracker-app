@@ -5,14 +5,19 @@ import {
   CheckSquare, Square, AlertTriangle, ChevronRight, ArrowUpDown,
   User, Layers, Activity, ChevronDown, ChevronUp, Pencil, Repeat, Loader2,
   CheckCircle, BookOpen, Settings2, Check, Timer, CalendarDays, Target, RefreshCw,
-  Newspaper, HardDrive, CheckCircle as CheckIcon, Tag,
-  Link, Image as ImageIcon, Paperclip, ExternalLink, Upload
+  Newspaper, CheckCircle as CheckIcon, Tag,
+  Link, Paperclip, ExternalLink, Upload
 } from 'lucide-react';
 import { socket } from './lib/socket';
 import { apiPost, apiPatch, apiDelete } from './lib/api';
 import { isSafeUrl, PASSWORD_HINT, isStrongPassword } from './lib/security';
+import { formatDate, formatFullDateTime, toLocalMidnight } from './lib/dateUtils';
+import { getTaskStatus, checkIsCurrent, displayAssignee } from './lib/taskStatus';
+import { compressImage } from './lib/imageUtils';
+import { callRecurTask } from './lib/recurrence';
 import AccountsPage from './pages/AccountsPage';
 import LogsQueryPage from './pages/LogsQueryPage';
+import { useToast } from './components/ToastProvider';
 
 // --- 1. 核心常數定義 ---
 
@@ -63,87 +68,8 @@ const STATUS_FILTER_TYPES = [
 ];
 
 // --- 2. 核心輔助函數 ---
-
-const formatDate = (date) => {
-  if (!date) return "";
-  const d = new Date(date);
-  return isNaN(d.getTime()) ? "" : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-
-const formatFullDateTime = (date) => {
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return "";
-  return `${formatDate(d)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-};
-
-const toLocalMidnight = (dateInput) => {
-  if (!dateInput) return new Date();
-  const d = new Date(dateInput);
-  d.setHours(0, 0, 0, 0);
-  return d;
-};
-
-const displayAssignee = (assigneeData) => {
-  if (Array.isArray(assigneeData)) return assigneeData.join('、');
-  return String(assigneeData || '未指派');
-};
-
-const getTaskStatus = (task, allLogs = []) => {
-  if (!task) return { label: "未知", color: "bg-slate-100 text-slate-400 border-slate-200", Icon: Clock, value: 'unknown' };
-  const today = toLocalMidnight(new Date());
-  const end = toLocalMidnight(task.endDate);
-  
-  if (task.progress >= 100) return { label: "已完成", color: "bg-emerald-50 text-emerald-600 border-emerald-100", Icon: CheckCircle2, value: 'done' };
-  if (end < today) return { label: "已逾期", color: "bg-rose-50 text-rose-600 border-rose-100", Icon: AlertTriangle, value: 'delayed' };
-  
-  // 檢查是否有已完成的子項，或者是否有填寫過日誌
-  const hasCompletedChecklist = (task.checklist || []).some(item => item.completed);
-  const hasLogs = allLogs.some(log => log.taskId === task.id);
-
-  if (task.progress > 0 || hasCompletedChecklist || hasLogs) return { label: "進行中", color: "bg-blue-50 text-blue-600 border-blue-100", Icon: AlertCircle, value: 'doing' };
-  
-  return { label: "未開始", color: "bg-slate-100 text-slate-500 border-slate-200", Icon: Clock, value: 'todo' };
-};
-
-const checkIsCurrent = (unitDate, scale) => {
-  const now = new Date();
-  if (scale === 'day') return unitDate.toDateString() === now.toDateString();
-  if (scale === 'week') { 
-    const e = new Date(unitDate); e.setDate(unitDate.getDate() + 7); 
-    return now >= unitDate && now < e; 
-  }
-  return unitDate.getMonth() === now.getMonth() && unitDate.getFullYear() === now.getFullYear();
-};
-
-// 圖片前端壓縮函數 (避免佔用過多資料庫空間)
-const compressImage = (file, callback) => {
-  const reader = new FileReader();
-  reader.onload = (event) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      let width = img.width;
-      let height = img.height;
-      const max_size = 1200; // 限制最大邊長為 1200px
-      if (width > height && width > max_size) {
-        height *= max_size / width;
-        width = max_size;
-      } else if (height > max_size) {
-        width *= max_size / height;
-        height = max_size;
-      }
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, width, height);
-      // 輸出為 70% 壓縮率的 JPEG
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-      callback(dataUrl);
-    };
-    img.src = event.target.result;
-  };
-  reader.readAsDataURL(file);
-};
+// formatDate / formatFullDateTime / toLocalMidnight / displayAssignee / getTaskStatus
+// / checkIsCurrent / compressImage 已抽至 src/lib/{dateUtils,taskStatus,imageUtils}.js
 
 // --- 3. 子組件定義 ---
 
@@ -173,6 +99,7 @@ const RecurrenceBadgeDisplay = ({ task }) => {
 // --- 4. 主應用組件 ---
 
 export default function App() {
+  const toast = useToast();
   const [authState, setAuthState] = useState(() => localStorage.getItem('wt_token') ? 'loading' : 'check');
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [loginError, setLoginError] = useState('');
@@ -834,29 +761,20 @@ export default function App() {
     }
   };
 
+  // 循環任務（FE-4 + BE-5）：呼叫後端 /api/tasks/:id/recur
+  // 後端負責標記目前任務完成 + 建立下一週期 task；前端只接受結果並關閉 UI
   const executeRecurrence = async (task) => {
     setIsRecurProcessing(true);
     try {
-      await apiPatch('tasks', task.id, { progress: 100 });
-      const interval = parseInt(task.recurrenceInterval || 1);
-      const type = task.recurrenceType || 'weekly';
-      const shiftDate = (dStr) => {
-        const d = toLocalMidnight(dStr);
-        if (type === 'daily') d.setDate(d.getDate() + interval);
-        else if (type === 'weekly') d.setDate(d.getDate() + (interval * 7));
-        else if (type === 'monthly') d.setMonth(d.getMonth() + interval);
-        return formatDate(d);
-      };
-      const nextChecklist = (task.checklist || []).map(item => ({
-        ...item, id: Date.now() + Math.random(), completed: false, actualDoneDate: null,
-        startDate: shiftDate(item.startDate || item.dueDate), dueDate: shiftDate(item.dueDate)
-      }));
-      const { id, createdAt, updatedAt, _id, __v, ...cleanData } = task;
-      await apiPost('tasks', {
-        ...cleanData, progress: 0, startDate: shiftDate(task.startDate), endDate: shiftDate(task.endDate), checklist: nextChecklist
-      });
-      setShowRecurConfirm(false); setSelectedTaskId(null);
-    } catch (err) { } finally { setIsRecurProcessing(false); }
+      await callRecurTask(task.id);
+      setShowRecurConfirm(false);
+      setSelectedTaskId(null);
+      toast.success('已建立下一週期');
+    } catch (err) {
+      toast.error(err.message || '循環失敗');
+    } finally {
+      setIsRecurProcessing(false);
+    }
   };
 
   const handleSendLog = async () => {
