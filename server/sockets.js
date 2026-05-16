@@ -24,7 +24,6 @@ const init = (httpServer) => {
     if (!token) return next(new Error('unauthorized'));
     try {
       socket.user = jwt.verify(token, JWT_SECRET);
-      // 將 user 寫入 socket 自身房間，便於精準推送
       next();
     } catch {
       next(new Error('unauthorized'));
@@ -33,10 +32,10 @@ const init = (httpServer) => {
 
   io.on('connection', async (socket) => {
     logAudit('ws.connect', socket.user?.userId, { socketId: socket.id, username: socket.user?.username });
-    // 加入個人房間（依 userId）；admin 額外加入 admin room 以收到全表廣播
     if (socket.user?.userId) socket.join(`u:${socket.user.userId}`);
     if (socket.user?.role === 'admin') socket.join('admins');
 
+    // 初次連線送一次全集合 snapshot；之後僅靠增量事件維護
     for (const col of COLLECTIONS) {
       const docs = await models[col].find(ownerFilter(col, socket.user)).lean();
       socket.emit(`${col}:updated`, docs.map(stripDoc));
@@ -47,7 +46,28 @@ const init = (httpServer) => {
   return io;
 };
 
-// 廣播：對共享 collections 全廣播；對 owned collections 只送 admin 房 + 該擁有者
+// BE-6：增量事件廣播。
+// op: 'created' | 'updated' | 'deleted'
+// doc: created/updated 時為完整 dto；deleted 時為 { id }
+// 仍同時觸發舊 ${col}:updated 全集事件當 fallback，給尚未升級的 client 用
+const broadcastChange = async (col, op, doc, ownerId) => {
+  if (!io) return;
+  const eventName = `${col}:${op}`; // tasks:created / tasks:updated / tasks:deleted
+
+  if (!OWNED_COLLECTIONS.has(col)) {
+    io.emit(eventName, doc);
+  } else {
+    io.to('admins').emit(eventName, doc);
+    if (ownerId) {
+      io.to(`u:${ownerId.toString()}`).except('admins').emit(eventName, doc);
+    }
+  }
+
+  // Fallback：保留 ${col}:updated 全集合事件，前端尚未切換到增量時不破功
+  await broadcastCollection(col, ownerId);
+};
+
+// 舊版全集合廣播：向後相容，不馬上移除
 const broadcastCollection = async (col, ownerId) => {
   if (!io) return;
   if (!OWNED_COLLECTIONS.has(col)) {
@@ -55,13 +75,12 @@ const broadcastCollection = async (col, ownerId) => {
     io.emit(`${col}:updated`, docs.map(stripDoc));
     return;
   }
-  // owned：admin 收到全部、owner 收到自己份
   const allDocs = await models[col].find({}).lean();
   io.to('admins').emit(`${col}:updated`, allDocs.map(stripDoc));
   if (ownerId) {
     const ownDocs = allDocs.filter(d => d.owner && d.owner.toString() === ownerId.toString());
-    io.to(`u:${ownerId}`).except('admins').emit(`${col}:updated`, ownDocs.map(stripDoc));
+    io.to(`u:${ownerId.toString()}`).except('admins').emit(`${col}:updated`, ownDocs.map(stripDoc));
   }
 };
 
-module.exports = { init, broadcastCollection };
+module.exports = { init, broadcastChange, broadcastCollection };

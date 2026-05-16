@@ -15,6 +15,9 @@ const userSchema = new mongoose.Schema({
   role: { type: String, enum: ['admin', 'user'], default: 'user' },
   disabled: { type: Boolean, default: false },
   createdBy: { type: mongoose.Schema.Types.ObjectId, default: null },
+  // 登入失敗計數鎖定（BE-10）：超過閾值即鎖到 lockedUntil；成功登入後歸零
+  failedLoginCount: { type: Number, default: 0 },
+  lockedUntil: { type: Date, default: null },
 }, { timestamps: true });
 const User = mongoose.model('User', userSchema, 'users');
 
@@ -29,6 +32,8 @@ const ensureFirstAdmin = async () => {
   console.log(`[DB] Promoted user "${oldest.username}" to admin (no admin existed)`);
 };
 
+// 業務 collection schema：保留 strict:false 以容忍歷史欄位（attachments / checklist 結構演化）
+// 業務層由 server/schemas/*.js 的 Zod 驗證把關（BE-3），DB 層不再雙重限制
 const flexSchema = new mongoose.Schema({}, { strict: false, timestamps: true });
 const COLLECTIONS = ['tasks', 'logs', 'groups', 'tags'];
 const models = {};
