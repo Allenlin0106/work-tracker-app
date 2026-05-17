@@ -16,6 +16,19 @@ const toUserDto = (u) => ({
   createdAt: u.createdAt,
 });
 
+// 任務「負責人員」picker 需要清單，但不該要求 admin 權限。
+// 此 endpoint 必須放在 router.use(requireAdmin) 之前。
+router.get('/users/options', requireAuth, async (req, res, next) => {
+  try {
+    const users = await User.find({ disabled: { $ne: true } }, { username: 1 })
+      .sort({ username: 1 })
+      .lean();
+    res.json(users.map(u => ({ id: u._id.toString(), username: u.username })));
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.use(requireAuth, requireAdmin);
 
 // 列出所有使用者

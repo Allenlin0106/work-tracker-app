@@ -9,7 +9,7 @@ import {
   Link, Paperclip, ExternalLink, Upload
 } from 'lucide-react';
 import { socket } from './lib/socket';
-import { apiPost, apiPatch, apiDelete } from './lib/api';
+import { apiPost, apiPatch, apiDelete, usersApi } from './lib/api';
 import { isSafeUrl, PASSWORD_HINT, isStrongPassword } from './lib/security';
 import { formatDate, formatFullDateTime, toLocalMidnight } from './lib/dateUtils';
 import { getTaskStatus, checkIsCurrent, displayAssignee } from './lib/taskStatus';
@@ -110,7 +110,9 @@ export default function App() {
   const [tasks, setTasks] = useState([]);
   const [logs, setLogs] = useState([]);
   const [groups, setGroups] = useState([]);
-  const [tags, setTags] = useState([]); 
+  const [tags, setTags] = useState([]);
+  // 任務「負責人員」picker 用的帳號清單（{id, username}），所有登入者可拿
+  const [users, setUsers] = useState([]);
   
   const [viewMode, setViewMode] = useState("list"); 
   const [ganttScale, setGanttScale] = useState("week"); 
@@ -154,8 +156,6 @@ export default function App() {
   const [checklistError, setChecklistError] = useState(""); 
   const [formError, setFormError] = useState(""); 
 
-  const [assigneeInput, setAssigneeInput] = useState("");
-  
   const [detailLinkName, setDetailLinkName] = useState("");
   const [detailLinkUrl, setDetailLinkUrl] = useState("");
 
@@ -181,7 +181,14 @@ export default function App() {
   const [taskForm, setTaskForm] = useState(INITIAL_TASK_FORM);
 
   useEffect(() => {
-    const onConnect = () => setAuthState('ready');
+    const onConnect = () => {
+      setAuthState('ready');
+      // 任務「負責人員」picker 用的帳號清單，登入後拉一次（user 變動不頻繁，不掛 socket）
+      usersApi.options().then(setUsers).catch(err => {
+        console.error('載入帳號清單失敗', err);
+        toast.error(`載入帳號清單失敗：${err.message}`);
+      });
+    };
     const onConnectError = (err) => {
       if (err.message === 'unauthorized') {
         localStorage.removeItem('wt_token');
@@ -305,31 +312,31 @@ export default function App() {
     setLogs([]);
     setGroups([]);
     setTags([]);
+    setUsers([]);
   };
 
-  const allUniqueAssignees = useMemo(() => {
-    const names = new Set();
-    tasks.forEach(t => {
-      if (Array.isArray(t.assignee)) {
-        t.assignee.forEach(a => { if (a) names.add(String(a)); });
-      } else if (t.assignee) {
-        names.add(String(t.assignee));
-      }
-    });
-    return Array.from(names).sort();
-  }, [tasks]);
+  // user id → {id, username} 對照表；給 displayAssignee / picker / filter 共用
+  const usersById = useMemo(() => {
+    const m = new Map();
+    users.forEach(u => m.set(u.id, u));
+    return m;
+  }, [users]);
 
+  // 篩選器「負責人員」chips 的資料來源：只列現有帳號（舊字串任務不再被篩，符合「不追溯」決策）
+  const allUniqueAssignees = useMemo(
+    () => users.map(u => u.id),
+    [users]
+  );
+
+  // 「常用記憶」：從歷史任務聚合最常被指派的 user id（過濾掉對不上帳號的舊字串）
   const rememberedAssignees = useMemo(() => {
     const counts = {};
     tasks.forEach(t => {
-      if (Array.isArray(t.assignee)) {
-        t.assignee.forEach(a => { if (a) counts[a] = (counts[a] || 0) + 1; });
-      } else if (t.assignee) {
-        counts[t.assignee] = (counts[t.assignee] || 0) + 1;
-      }
+      const arr = Array.isArray(t.assignee) ? t.assignee : (t.assignee ? [t.assignee] : []);
+      arr.forEach(a => { if (a && usersById.has(a)) counts[a] = (counts[a] || 0) + 1; });
     });
     return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(e => e[0]);
-  }, [tasks]);
+  }, [tasks, usersById]);
 
   // 新增：將標籤自動分為「進行中」與「已完成」狀態
   const { activeTags, completedTags } = useMemo(() => {
@@ -384,19 +391,20 @@ export default function App() {
   const baseFilteredTasks = useMemo(() => {
     return tasksInRange.filter(task => {
       const matchesGroup = filters.groups.length === 0 || filters.groups.includes(task.group);
-      const matchesAssignee = filters.assignees.length === 0 || filters.assignees.some(a => {
-        if (Array.isArray(task.assignee)) return task.assignee.includes(a);
-        return task.assignee === a;
-      });
+      // task.assignee 內可能是 user id（新資料）或舊人名字串；兩種都用陣列 includes 處理
+      const assigneeArr = Array.isArray(task.assignee) ? task.assignee : (task.assignee ? [task.assignee] : []);
+      const matchesAssignee = filters.assignees.length === 0 || filters.assignees.some(a => assigneeArr.includes(a));
       const matchesTag = filters.tags.length === 0 || filters.tags.some(tag => (task.tags || []).includes(tag));
       const searchLower = searchTerm.toLowerCase();
+      // 搜尋 assignee 時把 user id 解析成 username，否則使用者搜不到自己指派的人
+      const assigneeText = assigneeArr.map(a => usersById.get(a)?.username || String(a)).join(' ').toLowerCase();
       const matchesSearch = String(task.title || "").toLowerCase().includes(searchLower) ||
                             (task.tags || []).some(tag => tag.toLowerCase().includes(searchLower)) ||
-                            (Array.isArray(task.assignee) ? task.assignee.some(a => String(a).toLowerCase().includes(searchLower)) : String(task.assignee || "").toLowerCase().includes(searchLower));
+                            assigneeText.includes(searchLower);
 
       return matchesGroup && matchesAssignee && matchesTag && matchesSearch;
     });
-  }, [tasksInRange, filters.groups, filters.assignees, filters.tags, searchTerm]);
+  }, [tasksInRange, filters.groups, filters.assignees, filters.tags, searchTerm, usersById]);
 
   const dashboardStats = useMemo(() => {
     const counts = { total: baseFilteredTasks.length, todo: 0, doing: 0, done: 0, delayed: 0 };
@@ -621,14 +629,6 @@ export default function App() {
     } catch (err) { setChecklistError("存儲失敗"); }
   };
 
-  const handleAddAssignee = () => {
-    const val = assigneeInput.trim();
-    if (val && !taskForm.assignee.includes(val)) {
-      setTaskForm(prev => ({ ...prev, assignee: [...prev.assignee, val] }));
-    }
-    setAssigneeInput("");
-  };
-
   const handleDetailImageUpload = async (e, taskId, currentAttachments = []) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -681,8 +681,7 @@ export default function App() {
       setIsTaskModalOpen(false); 
       setEditingTaskId(null); 
       setTaskForm(INITIAL_TASK_FORM);
-      setAssigneeInput("");
-    } catch (err) { 
+    } catch (err) {
       console.error("Task Save Error:", err);
       setFormError("儲存失敗: " + err.message); 
     } finally { 
@@ -909,9 +908,8 @@ export default function App() {
           </div>
           <button onClick={() => { 
             setEditingTaskId(null); 
-            setTaskForm(INITIAL_TASK_FORM); 
-            setAssigneeInput("");
-            setIsTaskModalOpen(true); 
+            setTaskForm(INITIAL_TASK_FORM);
+            setIsTaskModalOpen(true);
           }} className="bg-slate-900 text-white px-6 py-2.5 rounded-xl text-base font-bold shadow-lg flex items-center gap-2 active:scale-95 transition-all"><Plus className="w-5 h-5" />建立任務</button>
           <button onClick={handleLogout} title="登出" className="flex items-center gap-1.5 text-slate-500 hover:text-red-500 hover:bg-red-50 transition-colors px-3 py-2 rounded-xl text-sm font-bold">
             <User className="w-4 h-4" />{currentUsername}
@@ -983,7 +981,7 @@ export default function App() {
             </div>
             <div className="space-y-4 border-l border-slate-100 px-0 lg:px-8">
               <p className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><User className="w-4 h-4" /> 負責人員</p>
-              <div className="flex flex-wrap gap-3">{allUniqueAssignees.map(name => (<FilterChip key={name} label={name} isActive={filters.assignees.includes(name)} onClick={() => toggleFilter('assignees', name)} activeClass="bg-teal-600" unselectedClass="bg-slate-50 text-slate-500 border-transparent shadow-sm" />))}</div>
+              <div className="flex flex-wrap gap-3">{allUniqueAssignees.map(uid => (<FilterChip key={uid} label={usersById.get(uid)?.username || uid} isActive={filters.assignees.includes(uid)} onClick={() => toggleFilter('assignees', uid)} activeClass="bg-teal-600" unselectedClass="bg-slate-50 text-slate-500 border-transparent shadow-sm" />))}</div>
             </div>
           </div>
         </div>
@@ -1063,7 +1061,7 @@ export default function App() {
                         <td className="px-8 py-6">
                           <div className="flex flex-col gap-1.5">
                             <span className={`w-fit text-xs font-black px-3 py-1 border rounded-full ${g?.color?.bg || 'bg-slate-100'} ${g?.color?.text || 'text-slate-500'}`}>{task.group}</span>
-                            <span className="text-xs text-slate-400 font-bold ml-1">{displayAssignee(task.assignee)}</span>
+                            <span className="text-xs text-slate-400 font-bold ml-1">{displayAssignee(task.assignee, usersById)}</span>
                           </div>
                         </td>
                         <td className="px-8 py-6"><div className="flex items-center gap-4"><div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden shadow-inner"><div className={`h-full transition-all duration-700 ${status.value === 'delayed' ? 'bg-rose-500' : 'bg-indigo-600'}`} style={{ width: `${task.progress}%` }}></div></div><span className="text-xs font-black text-slate-400">{task.progress}%</span></div></td>
@@ -1075,9 +1073,8 @@ export default function App() {
                               ...task, 
                               tags: (task.tags || []).filter(tName => tags.some(t => t.name === tName)), 
                               assignee: Array.isArray(task.assignee) ? task.assignee : (task.assignee ? [task.assignee] : [])
-                            }); 
-                            setAssigneeInput("");
-                            setIsTaskModalOpen(true); 
+                            });
+                            setIsTaskModalOpen(true);
                           }} className="p-2.5 text-slate-300 hover:text-indigo-600 transition-all"><Pencil className="w-5 h-5" /></button>
                           <button onClick={(e) => { e.stopPropagation(); setTaskToDelete(task); }} className="p-2.5 text-slate-300 hover:text-rose-500 transition-all"><Trash2 className="w-5 h-5" /></button>
                         </td>
@@ -1126,7 +1123,7 @@ export default function App() {
                               {task.attachments?.length > 0 && <Paperclip className="w-3 h-3 text-slate-300" />}
                             </div>
                             <div className="flex items-center gap-2 mt-0.5">
-                              <div className="text-xs text-slate-400 font-bold uppercase truncate max-w-[120px]">{displayAssignee(task.assignee)}</div>
+                              <div className="text-xs text-slate-400 font-bold uppercase truncate max-w-[120px]">{displayAssignee(task.assignee, usersById)}</div>
                               <div className="text-xs text-slate-400 font-bold">· {task.progress}%</div>
                               {(() => {
                                 const validTags = task.tags ? task.tags.filter(tName => tags.some(t => t.name === tName)) : [];
@@ -1260,7 +1257,7 @@ export default function App() {
                                 </button>
                               </div>
                               <div className="space-y-1.5">
-                                <div className="text-xs font-bold text-slate-500 uppercase tracking-tighter flex items-center gap-1.5"><User className="w-3.5 h-3.5"/> {displayAssignee(task.assignee)}</div>
+                                <div className="text-xs font-bold text-slate-500 uppercase tracking-tighter flex items-center gap-1.5"><User className="w-3.5 h-3.5"/> {displayAssignee(task.assignee, usersById)}</div>
                                 <div className="text-xs font-bold text-slate-500 uppercase tracking-tighter flex items-center gap-1.5"><Layers className="w-3.5 h-3.5"/> {task.group}</div>
                                 <div className="text-xs font-bold text-slate-500 uppercase tracking-tighter flex items-center gap-1.5"><Activity className="w-3.5 h-3.5"/> 進度 {task.progress}%</div>
                               </div>
@@ -1369,7 +1366,7 @@ export default function App() {
                    </div>
                    <div className="flex flex-wrap items-start gap-2">
                      <div className="flex items-center gap-2 text-sm font-black text-slate-400 uppercase tracking-widest shrink-0 mt-0.5"><User className="w-5 h-5" /> 負責人員：</div>
-                     <div className="text-base font-black text-slate-700 leading-relaxed">{displayAssignee(currentTaskInMemo.assignee)}</div>
+                     <div className="text-base font-black text-slate-700 leading-relaxed">{displayAssignee(currentTaskInMemo.assignee, usersById)}</div>
                    </div>
                 </div>
               </div>
@@ -1558,58 +1555,68 @@ export default function App() {
 
               <div>
                 <label className="text-xs font-black text-slate-400 uppercase mb-3 block tracking-widest">負責人員 (可多選)</label>
-                
+
+                {/* 已選 chips：對得上帳號顯示 username；對不上是舊資料，標示並保留可移除 */}
                 {taskForm.assignee.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-3">
-                    {taskForm.assignee.map(a => (
-                      <span key={a} className="flex items-center gap-1.5 bg-teal-50 text-teal-700 px-3 py-1.5 rounded-lg text-sm font-bold border border-teal-200">
-                        {a}
-                        <button type="button" onClick={() => setTaskForm({...taskForm, assignee: taskForm.assignee.filter(name => name !== a)})} className="hover:text-rose-500 transition-colors"><X className="w-3.5 h-3.5" /></button>
-                      </span>
-                    ))}
+                    {taskForm.assignee.map(a => {
+                      const u = usersById.get(a);
+                      return (
+                        <span key={a} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold border ${u ? 'bg-teal-50 text-teal-700 border-teal-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                          {u ? u.username : `${a}（舊資料）`}
+                          <button type="button" onClick={() => setTaskForm({...taskForm, assignee: taskForm.assignee.filter(x => x !== a)})} className="hover:text-rose-500 transition-colors"><X className="w-3.5 h-3.5" /></button>
+                        </span>
+                      );
+                    })}
                   </div>
                 )}
 
-                <div className="flex gap-2">
-                   <input
-                     className="flex-1 p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-bold text-base shadow-sm focus:ring-4 focus:ring-indigo-100/50 transition-all"
-                     placeholder="輸入人員名稱後，按 Enter 新增..."
-                     value={assigneeInput}
-                     onChange={e => setAssigneeInput(e.target.value)}
-                     onKeyDown={e => {
-                       if (e.key === 'Enter') {
-                         e.preventDefault(); 
-                         handleAddAssignee();
-                       }
-                     }}
-                   />
-                   <button
-                     type="button"
-                     onClick={handleAddAssignee}
-                     className="px-6 bg-slate-900 text-white rounded-2xl font-black shadow-md hover:bg-slate-800 transition-all active:scale-95"
-                   >
-                     新增
-                   </button>
-                </div>
+                {/* 帳號 picker：只能從現有帳號選 */}
+                {users.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {users.map(u => {
+                      const isSelected = taskForm.assignee.includes(u.id);
+                      return (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => setTaskForm(prev => ({
+                            ...prev,
+                            assignee: isSelected ? prev.assignee.filter(x => x !== u.id) : [...prev.assignee, u.id]
+                          }))}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-bold border transition-all ${isSelected ? 'bg-teal-50 text-teal-700 border-teal-300 ring-2 ring-teal-200 shadow-sm' : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-teal-300'}`}
+                        >
+                          {u.username}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-sm font-bold text-slate-400 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    尚無可選帳號。請至「帳號管理」建立。
+                  </div>
+                )}
 
                 {rememberedAssignees.length > 0 && (
                   <div className="mt-4 flex flex-wrap gap-3 items-center">
                     <span className="text-xs font-black text-slate-400 uppercase tracking-widest">常用記憶：</span>
-                    {rememberedAssignees.map(name => {
-                      const isSelected = taskForm.assignee.includes(name);
+                    {rememberedAssignees.map(uid => {
+                      const u = usersById.get(uid);
+                      if (!u) return null;
+                      const isSelected = taskForm.assignee.includes(uid);
                       return (
-                        <button 
-                          key={name} 
-                          type="button" 
+                        <button
+                          key={uid}
+                          type="button"
                           onClick={() => {
                             setTaskForm(prev => ({
                               ...prev,
-                              assignee: isSelected ? prev.assignee.filter(n => n !== name) : [...prev.assignee, name]
+                              assignee: isSelected ? prev.assignee.filter(x => x !== uid) : [...prev.assignee, uid]
                             }));
-                          }} 
+                          }}
                           className={`px-3 py-1.5 bg-white border border-slate-200 text-slate-500 rounded-lg text-xs font-bold hover:border-teal-400 hover:text-teal-600 transition-all ${isSelected ? 'ring-2 ring-teal-500 text-teal-700 shadow-sm bg-teal-50' : ''}`}
                         >
-                          {name}
+                          {u.username}
                         </button>
                       )
                     })}

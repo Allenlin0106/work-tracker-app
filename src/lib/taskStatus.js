@@ -38,7 +38,10 @@ export const checkIsCurrent = (unitDate, scale) => {
   return unitDate.getMonth() === now.getMonth() && unitDate.getFullYear() === now.getFullYear();
 };
 
-export const displayAssignee = (assigneeData) => {
-  if (Array.isArray(assigneeData)) return assigneeData.join('、');
-  return String(assigneeData || '未指派');
+// assigneeData 內每一個 entry 若能在 usersById 對到帳號 → 顯示 username；
+// 對不到的視為舊資料（任意人名字串），原樣顯示
+export const displayAssignee = (assigneeData, usersById) => {
+  const arr = Array.isArray(assigneeData) ? assigneeData : (assigneeData ? [assigneeData] : []);
+  if (arr.length === 0) return '未指派';
+  return arr.map(v => (usersById && usersById.get(v)?.username) || String(v)).join('、');
 };

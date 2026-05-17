@@ -35,6 +35,8 @@ export const apiDelete = (col, id) =>
 
 export const usersApi = {
   list: () => fetch(`${API_BASE}/users`, { headers: authHeaders() }).then(handleJson),
+  // 給任務 assignee picker 用，任何登入者可叫；只回 { id, username }
+  options: () => fetch(`${API_BASE}/users/options`, { headers: authHeaders() }).then(handleJson),
   create: (payload) => fetch(`${API_BASE}/users`, {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
