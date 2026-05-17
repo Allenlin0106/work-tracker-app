@@ -291,6 +291,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    if (!window.confirm('確定要登出嗎？')) return;
     localStorage.removeItem('wt_token');
     localStorage.removeItem('wt_username');
     localStorage.removeItem('wt_role');
@@ -710,6 +711,7 @@ export default function App() {
       setNewGroupColor(GROUP_COLOR_OPTIONS[0]);
     } catch (err) {
       console.error(err);
+      toast.error(`儲存執行小組失敗：${err.message}`);
     } finally { setIsSavingGroup(false); }
   };
 
@@ -722,6 +724,7 @@ export default function App() {
       if (editingGroupId === groupId) { setEditingGroupId(null); setNewGroupName(""); }
     } catch (e) {
       console.error(e);
+      toast.error(`刪除執行小組失敗：${e.message}`);
     }
   };
 
@@ -746,6 +749,7 @@ export default function App() {
       setNewTagColor(TAG_COLOR_OPTIONS[0]);
     } catch (err) {
       console.error(err);
+      toast.error(`儲存專案標籤失敗：${err.message}`);
     } finally { setIsSavingTag(false); }
   };
 
@@ -758,6 +762,7 @@ export default function App() {
       if (editingTagId === tagId) { setEditingTagId(null); setNewTagName(""); }
     } catch (e) {
       console.error(e);
+      toast.error(`刪除專案標籤失敗：${e.message}`);
     }
   };
 

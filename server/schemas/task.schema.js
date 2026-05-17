@@ -18,7 +18,7 @@ const checklistItemSchema = z.object({
 // 建立 / 更新 task 共用核心欄位；POST 全必填，PATCH 全 optional（partial）
 const taskCore = {
   title: z.string().min(1).max(500),
-  assignee: z.string().max(200).default(''),
+  assignee: z.array(z.string().max(200)).default([]),
   group: z.string().max(200).default(''),
   tags: z.array(z.string().max(200)).default([]),
   startDate: isoDateString.optional(),

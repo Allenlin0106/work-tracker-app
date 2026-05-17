@@ -9,4 +9,11 @@ const isoDateString = z.string().refine((v) => !Number.isNaN(Date.parse(v)), 'in
 // 顏色 hex（#RGB / #RRGGBB / Tailwind class 等都允許），保守只限長度
 const colorString = z.string().min(1).max(64);
 
-module.exports = { objectIdString, isoDateString, colorString };
+// group / tag 既有資料把 color 存成 { label, bg, text, border, active } 物件（前端 Tailwind class），
+// 同時允許單一字串以相容簡易場景；只限值型為 string 的單層 record，避免巢狀注入
+const colorValue = z.union([
+  colorString,
+  z.record(z.string(), z.string().max(64)),
+]);
+
+module.exports = { objectIdString, isoDateString, colorString, colorValue };

@@ -7,31 +7,31 @@ const authHeaders = (extra = {}) => ({
   Authorization: `Bearer ${getToken()}`,
 });
 
+const handleJson = async (r) => {
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  return data;
+};
+
 export const apiPost = (col, data) =>
   fetch(`${API_BASE}/${col}`, {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(data),
-  }).then(r => r.json());
+  }).then(handleJson);
 
 export const apiPatch = (col, id, data) =>
   fetch(`${API_BASE}/${col}/${id}`, {
     method: 'PATCH',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(data),
-  });
+  }).then(handleJson);
 
 export const apiDelete = (col, id) =>
   fetch(`${API_BASE}/${col}/${id}`, {
     method: 'DELETE',
     headers: authHeaders(),
-  });
-
-const handleJson = async (r) => {
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
-  return data;
-};
+  }).then(handleJson);
 
 export const usersApi = {
   list: () => fetch(`${API_BASE}/users`, { headers: authHeaders() }).then(handleJson),

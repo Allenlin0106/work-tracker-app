@@ -1,9 +1,9 @@
 const { z } = require('zod');
-const { colorString } = require('./common');
+const { colorValue } = require('./common');
 
 const tagCore = {
   name: z.string().min(1).max(100),
-  color: colorString,
+  color: colorValue,
 };
 
 const tagCreateSchema = z.object(tagCore);
