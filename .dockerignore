@@ -1,0 +1,22 @@
+# 對齊 .gitignore，避免將不該進 image 的資料夾傳入 build context
+
+# git
+.git/
+.gitignore
+
+# 依賴套件（容器內自行 npm install）
+node_modules/
+server/node_modules/
+
+# 資料持久化 / 備份（且 mongo-data 內檔案可能沒有讀權限，會中斷 build）
+mongo-data/
+backups/
+
+# 環境變數（不可進 image）
+.env
+.env.local
+.env.*.local
+
+# 編輯器
+.vscode/
+.idea/
