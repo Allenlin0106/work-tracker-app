@@ -151,6 +151,7 @@ export default function AccountsPage({ currentUserId }) {
               onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
             >
               <option value="user">user</option>
+              <option value="PM">PM</option>
               <option value="admin">admin</option>
             </select>
           </Field>
@@ -199,6 +200,7 @@ export default function AccountsPage({ currentUserId }) {
                       className="border border-slate-200 rounded-lg px-2 py-1 text-xs"
                     >
                       <option value="user">user</option>
+                      <option value="PM">PM</option>
                       <option value="admin">admin</option>
                     </select>
                   </td>

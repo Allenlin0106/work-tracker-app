@@ -6,9 +6,12 @@ const { logAudit } = require('./lib/audit');
 
 const OWNED_COLLECTIONS = new Set(['tasks', 'logs']);
 
-const ownerFilter = (col, user) => {
+// 與 services/crudService.js 同步：admin / PM 都能讀全部；user 只讀自己 owner 的
+const canViewAll = (user) => user?.role === 'admin' || user?.role === 'PM';
+
+const readFilter = (col, user) => {
   if (!OWNED_COLLECTIONS.has(col)) return {};
-  if (user?.role === 'admin') return {};
+  if (canViewAll(user)) return {};
   return { owner: user.userId };
 };
 
@@ -33,11 +36,12 @@ const init = (httpServer) => {
   io.on('connection', async (socket) => {
     logAudit('ws.connect', socket.user?.userId, { socketId: socket.id, username: socket.user?.username });
     if (socket.user?.userId) socket.join(`u:${socket.user.userId}`);
-    if (socket.user?.role === 'admin') socket.join('admins');
+    // 'admins' room 的含義是「能看全部的人」：admin + PM 都加入，broadcast 邏輯沿用
+    if (canViewAll(socket.user)) socket.join('admins');
 
     // 初次連線送一次全集合 snapshot；之後僅靠增量事件維護
     for (const col of COLLECTIONS) {
-      const docs = await models[col].find(ownerFilter(col, socket.user)).lean();
+      const docs = await models[col].find(readFilter(col, socket.user)).lean();
       socket.emit(`${col}:updated`, docs.map(stripDoc));
     }
     socket.on('disconnect', () => logAudit('ws.disconnect', socket.user?.userId, { socketId: socket.id }));

@@ -47,7 +47,7 @@ router.post('/users', async (req, res, next) => {
     const { username, password, role } = req.body || {};
     if (!username || !password) return res.status(400).json({ error: '帳號與密碼為必填' });
     if (!validatePassword(password)) return res.status(400).json({ error: PASSWORD_RULE_MSG });
-    if (role && !['admin', 'user'].includes(role)) return res.status(400).json({ error: '角色不合法' });
+    if (role && !['admin', 'PM', 'user'].includes(role)) return res.status(400).json({ error: '角色不合法' });
     const exists = await User.findOne({ username });
     if (exists) return res.status(409).json({ error: '帳號已存在' });
     const passwordHash = await bcrypt.hash(password, 12);
@@ -70,10 +70,10 @@ router.patch('/users/:id', async (req, res, next) => {
     const target = await User.findById(req.params.id);
     if (!target) return res.status(404).json({ error: '使用者不存在' });
     const { role } = req.body || {};
-    if (role && !['admin', 'user'].includes(role)) return res.status(400).json({ error: '角色不合法' });
+    if (role && !['admin', 'PM', 'user'].includes(role)) return res.status(400).json({ error: '角色不合法' });
     if (role && target.role !== role) {
-      // 防止把最後一位 admin 降級
-      if (target.role === 'admin' && role === 'user') {
+      // 防止把最後一位 admin 降為非 admin（PM 也算降級）
+      if (target.role === 'admin' && role !== 'admin') {
         const adminCount = await User.countDocuments({ role: 'admin' });
         if (adminCount <= 1) return res.status(400).json({ error: '至少需保留一位 admin' });
       }
