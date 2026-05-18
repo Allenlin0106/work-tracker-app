@@ -29,7 +29,11 @@ router.get('/users/options', requireAuth, async (req, res, next) => {
   }
 });
 
-router.use(requireAuth, requireAdmin);
+// 注意：本 router 在 server/index.js 是 mount 在 '/api'（非 '/api/users'），所以
+// 不能用 path-less `router.use(requireAdmin)` —— 那會把 admin gate 套到所有經過
+// 此 router 的請求（如 /api/tasks），導致非 admin 連 POST tasks 都被擋成 Admin only。
+// 必須顯式限定 '/users' 前綴。
+router.use('/users', requireAuth, requireAdmin);
 
 // 列出所有使用者
 router.get('/users', async (req, res, next) => {
