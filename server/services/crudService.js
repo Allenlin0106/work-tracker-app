@@ -7,10 +7,39 @@ const { schemas } = require('../schemas');
 // groups / tags 為共享的設定資料，不過濾
 const OWNED_COLLECTIONS = new Set(['tasks', 'logs']);
 
-const ownerFilter = (col, user) => {
-  if (!OWNED_COLLECTIONS.has(col)) return {};
+// 權限規則：
+//   task 讀：admin / owner / assignee.includes(self) / handler.includes(self)
+//   task 寫：admin / owner / handler.includes(self)
+//   log  讀/寫：跟著關聯 task 走（用 log.taskId 反查）
+const taskReadQuery = (user) => {
   if (user?.role === 'admin') return {};
-  return { owner: user.userId };
+  const uid = user.userId;
+  return { $or: [{ owner: uid }, { assignee: uid }, { handler: uid }] };
+};
+const taskWriteQuery = (user) => {
+  if (user?.role === 'admin') return {};
+  const uid = user.userId;
+  return { $or: [{ owner: uid }, { handler: uid }] };
+};
+
+// readFilter / writeFilter 為 async：logs 需先查 user 可見/可寫的 task ids
+const readFilter = async (col, user) => {
+  if (col === 'tasks') return taskReadQuery(user);
+  if (col === 'logs') {
+    if (user?.role === 'admin') return {};
+    const tasks = await models.tasks.find(taskReadQuery(user), { _id: 1 }).lean();
+    return { taskId: { $in: tasks.map(t => t._id.toString()) } };
+  }
+  return {};
+};
+const writeFilter = async (col, user) => {
+  if (col === 'tasks') return taskWriteQuery(user);
+  if (col === 'logs') {
+    if (user?.role === 'admin') return {};
+    const tasks = await models.tasks.find(taskWriteQuery(user), { _id: 1 }).lean();
+    return { taskId: { $in: tasks.map(t => t._id.toString()) } };
+  }
+  return {};
 };
 
 const isOwned = (col) => OWNED_COLLECTIONS.has(col);
@@ -35,7 +64,7 @@ const buildCrudService = (broadcastChange) => {
 
   const list = async (col, user) => {
     assertCollection(col);
-    const docs = await models[col].find(ownerFilter(col, user)).lean();
+    const docs = await models[col].find(await readFilter(col, user)).lean();
     return docs.map(stripDoc);
   };
 
@@ -62,7 +91,7 @@ const buildCrudService = (broadcastChange) => {
 
   const update = async (col, user, id, rawBody) => {
     assertCollection(col);
-    const filter = { _id: id, ...ownerFilter(col, user) };
+    const filter = { _id: id, ...(await writeFilter(col, user)) };
     const body = sanitizeBody(rawBody);
     delete body.owner; // 不允許透過 PATCH 改 owner
     const schema = schemas[col]?.update;
@@ -89,7 +118,7 @@ const buildCrudService = (broadcastChange) => {
 
   const remove = async (col, user, id) => {
     assertCollection(col);
-    const filter = { _id: id, ...ownerFilter(col, user) };
+    const filter = { _id: id, ...(await writeFilter(col, user)) };
     const result = await models[col].findOneAndDelete(filter);
     if (!result) {
       const e = new Error('資源不存在或無權限');
@@ -108,7 +137,7 @@ const buildCrudService = (broadcastChange) => {
     if (broadcastChange) await broadcastChange(col, op, doc, ownerId);
   };
 
-  return { list, create, update, remove, broadcast, ownerFilter, isOwned };
+  return { list, create, update, remove, broadcast, readFilter, writeFilter, taskReadQuery, taskWriteQuery, isOwned };
 };
 
-module.exports = { buildCrudService, OWNED_COLLECTIONS, ownerFilter, isOwned };
+module.exports = { buildCrudService, OWNED_COLLECTIONS, readFilter, writeFilter, taskReadQuery, taskWriteQuery, isOwned };

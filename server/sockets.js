@@ -3,14 +3,7 @@ const { Server } = require('socket.io');
 const { JWT_SECRET, CORS_ORIGIN } = require('./config');
 const { models, COLLECTIONS, stripDoc } = require('./db');
 const { logAudit } = require('./lib/audit');
-
-const OWNED_COLLECTIONS = new Set(['tasks', 'logs']);
-
-const ownerFilter = (col, user) => {
-  if (!OWNED_COLLECTIONS.has(col)) return {};
-  if (user?.role === 'admin') return {};
-  return { owner: user.userId };
-};
+const { readFilter, OWNED_COLLECTIONS } = require('./services/crudService');
 
 let io = null;
 
@@ -23,7 +16,8 @@ const init = (httpServer) => {
     const token = socket.handshake.auth?.token;
     if (!token) return next(new Error('unauthorized'));
     try {
-      socket.user = jwt.verify(token, JWT_SECRET);
+      // 放在 socket.data 上，io.fetchSockets() 取回的 RemoteSocket 才能存取
+      socket.data.user = jwt.verify(token, JWT_SECRET);
       next();
     } catch {
       next(new Error('unauthorized'));
@@ -31,29 +25,27 @@ const init = (httpServer) => {
   });
 
   io.on('connection', async (socket) => {
-    logAudit('ws.connect', socket.user?.userId, { socketId: socket.id, username: socket.user?.username });
-    if (socket.user?.userId) socket.join(`u:${socket.user.userId}`);
-    if (socket.user?.role === 'admin') socket.join('admins');
+    const user = socket.data.user;
+    logAudit('ws.connect', user?.userId, { socketId: socket.id, username: user?.username });
+    if (user?.userId) socket.join(`u:${user.userId}`);
+    if (user?.role === 'admin') socket.join('admins');
 
-    // 初次連線送一次全集合 snapshot；之後僅靠增量事件維護
+    // 初次連線送一次全集合 snapshot
     for (const col of COLLECTIONS) {
-      const docs = await models[col].find(ownerFilter(col, socket.user)).lean();
+      const docs = await models[col].find(await readFilter(col, user)).lean();
       socket.emit(`${col}:updated`, docs.map(stripDoc));
     }
-    socket.on('disconnect', () => logAudit('ws.disconnect', socket.user?.userId, { socketId: socket.id }));
+    socket.on('disconnect', () => logAudit('ws.disconnect', user?.userId, { socketId: socket.id }));
   });
 
   return io;
 };
 
-// BE-6：增量事件廣播。
-// op: 'created' | 'updated' | 'deleted'
-// doc: created/updated 時為完整 dto；deleted 時為 { id }
-// 仍同時觸發舊 ${col}:updated 全集事件當 fallback，給尚未升級的 client 用
+// 增量事件 emit：目前 client 端只訂閱 ${col}:updated 全集 fallback，
+// 沒有訂閱 ${col}:created/updated/deleted；此區塊為 dead code，保留但不修正路由。
 const broadcastChange = async (col, op, doc, ownerId) => {
   if (!io) return;
-  const eventName = `${col}:${op}`; // tasks:created / tasks:updated / tasks:deleted
-
+  const eventName = `${col}:${op}`;
   if (!OWNED_COLLECTIONS.has(col)) {
     io.emit(eventName, doc);
   } else {
@@ -62,24 +54,24 @@ const broadcastChange = async (col, op, doc, ownerId) => {
       io.to(`u:${ownerId.toString()}`).except('admins').emit(eventName, doc);
     }
   }
-
-  // Fallback：保留 ${col}:updated 全集合事件，前端尚未切換到增量時不破功
   await broadcastCollection(col, ownerId);
 };
 
-// 舊版全集合廣播：向後相容，不馬上移除
-const broadcastCollection = async (col, ownerId) => {
+// 全集合 fallback：依每個連線 socket 的權限重算可見集合再 emit。
+// 對大量同時連線會 O(N * Q)，現階段使用者規模可接受；若日後變慢可改為「事件即時 routing」。
+const broadcastCollection = async (col /* , ownerId — 不再使用 */) => {
   if (!io) return;
   if (!OWNED_COLLECTIONS.has(col)) {
     const docs = await models[col].find({}).lean();
     io.emit(`${col}:updated`, docs.map(stripDoc));
     return;
   }
-  const allDocs = await models[col].find({}).lean();
-  io.to('admins').emit(`${col}:updated`, allDocs.map(stripDoc));
-  if (ownerId) {
-    const ownDocs = allDocs.filter(d => d.owner && d.owner.toString() === ownerId.toString());
-    io.to(`u:${ownerId.toString()}`).except('admins').emit(`${col}:updated`, ownDocs.map(stripDoc));
+  const sockets = await io.fetchSockets();
+  for (const s of sockets) {
+    const user = s.data?.user;
+    if (!user) continue;
+    const docs = await models[col].find(await readFilter(col, user)).lean();
+    s.emit(`${col}:updated`, docs.map(stripDoc));
   }
 };
 

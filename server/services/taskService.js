@@ -1,6 +1,6 @@
 const { models, toDoc } = require('../db');
 const { logAudit } = require('../lib/audit');
-const { ownerFilter } = require('./crudService');
+const { writeFilter } = require('./crudService');
 
 // 計算下一週期的 startDate / endDate；對應前端原 executeRecurrence 邏輯
 // recurrenceType: 'daily' | 'weekly' | 'monthly'；recurrenceInterval: 數值倍數
@@ -16,7 +16,7 @@ const addInterval = (date, type, interval) => {
 // 將 task 標為完成（progress=100）並建立下一週期的新 task；保持 owner 一致
 // 不在 mongoose 交易內：本專案是 standalone mongo（無 replicaSet），交易會直接失敗
 const recurTask = async (user, taskId) => {
-  const filter = { _id: taskId, ...ownerFilter('tasks', user) };
+  const filter = { _id: taskId, ...(await writeFilter('tasks', user)) };
   const current = await models.tasks.findOne(filter);
   if (!current) {
     const e = new Error('任務不存在或無權限');
