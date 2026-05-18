@@ -41,19 +41,12 @@ const init = (httpServer) => {
   return io;
 };
 
-// 增量事件 emit：目前 client 端只訂閱 ${col}:updated 全集 fallback，
-// 沒有訂閱 ${col}:created/updated/deleted；此區塊為 dead code，保留但不修正路由。
+// 推送變更：client 端只訂閱 ${col}:updated 全集，沒有訂閱 ${col}:created/deleted。
+// 重要：op='updated' 的情形下，eventName 與全集 fallback 同名，直接 emit 單物件會
+// 讓前端 setTasks(單物件)，造成 tasks 從陣列變 object，下次 render tasks.map 炸出白屏。
+// 因此這裡只走 broadcastCollection（推可見 task 全集），不再 emit ${col}:${op} 單物件。
 const broadcastChange = async (col, op, doc, ownerId) => {
   if (!io) return;
-  const eventName = `${col}:${op}`;
-  if (!OWNED_COLLECTIONS.has(col)) {
-    io.emit(eventName, doc);
-  } else {
-    io.to('admins').emit(eventName, doc);
-    if (ownerId) {
-      io.to(`u:${ownerId.toString()}`).except('admins').emit(eventName, doc);
-    }
-  }
   await broadcastCollection(col, ownerId);
 };
 
