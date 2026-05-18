@@ -322,6 +322,16 @@ export default function App() {
     return m;
   }, [users]);
 
+  // 與後端 services/crudService.js taskWriteQuery 一致：admin / owner / handler.includes(self) 可寫
+  // 用於前端隱藏「編輯 / 刪除」按鈕，避免使用者打開 modal 後存檔被 404
+  const canEditTask = (task) => {
+    if (!task) return false;
+    if (currentRole === 'admin') return true;
+    if (task.owner && String(task.owner) === currentUserId) return true;
+    if (Array.isArray(task.handler) && task.handler.includes(currentUserId)) return true;
+    return false;
+  };
+
   // 篩選器「負責人員」chips 的資料來源：只列現有帳號（舊字串任務不再被篩，符合「不追溯」決策）
   const allUniqueAssignees = useMemo(
     () => users.map(u => u.id),
@@ -1066,18 +1076,20 @@ export default function App() {
                         </td>
                         <td className="px-8 py-6"><div className="flex items-center gap-4"><div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden shadow-inner"><div className={`h-full transition-all duration-700 ${status.value === 'delayed' ? 'bg-rose-500' : 'bg-indigo-600'}`} style={{ width: `${task.progress}%` }}></div></div><span className="text-xs font-black text-slate-400">{task.progress}%</span></div></td>
                         <td className="px-10 py-6 text-right flex gap-2 justify-end opacity-0 group-hover/row:opacity-100 transition-all">
-                          <button onClick={(e) => { 
-                            e.stopPropagation(); 
-                            setEditingTaskId(task.id); 
+                          {canEditTask(task) && (<>
+                          <button onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingTaskId(task.id);
                             setTaskForm({
-                              ...task, 
-                              tags: (task.tags || []).filter(tName => tags.some(t => t.name === tName)), 
+                              ...task,
+                              tags: (task.tags || []).filter(tName => tags.some(t => t.name === tName)),
                               assignee: Array.isArray(task.assignee) ? task.assignee : (task.assignee ? [task.assignee] : []),
                               handler: Array.isArray(task.handler) ? task.handler : []
                             });
                             setIsTaskModalOpen(true);
                           }} className="p-2.5 text-slate-300 hover:text-indigo-600 transition-all"><Pencil className="w-5 h-5" /></button>
                           <button onClick={(e) => { e.stopPropagation(); setTaskToDelete(task); }} className="p-2.5 text-slate-300 hover:text-rose-500 transition-all"><Trash2 className="w-5 h-5" /></button>
+                          </>)}
                         </td>
                       </tr>
                     );

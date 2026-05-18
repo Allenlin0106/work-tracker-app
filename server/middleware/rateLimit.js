@@ -5,6 +5,8 @@ const authLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
+  // 只計失敗請求；合法切換帳號不被擋。暴力破解仍受 per-account lockout（auth.js）+ IP 失敗 5 次/15 分 雙層保護
+  skipSuccessfulRequests: true,
   message: { error: 'Too many attempts, please retry later' },
 });
 
