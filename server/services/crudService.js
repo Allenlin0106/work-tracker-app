@@ -90,7 +90,15 @@ const buildCrudService = (broadcastChange) => {
         e.status = 400;
         throw e;
       }
-      Object.assign(body, parsed.data);
+      // PATCH 只寫入 user 實際送出的 key——若直接 Object.assign(body, parsed.data) 會把
+      // schema 內 .default([]) / .default('') 等預設值塞進 body，導致 $set 把使用者
+      // 未送的欄位（assignee / tags / attachments / checklist / group...）一併重置。
+      // 例：加 checklist 項目只送 { checklist, progress } 時 assignee 會被清空。
+      const sentKeys = Object.keys(body);
+      for (const k of sentKeys) {
+        if (parsed.data[k] !== undefined) body[k] = parsed.data[k];
+        else delete body[k]; // input 給了 zod 無法接受的 key（會被 strip）→ 不寫進 DB
+      }
     }
     const result = await models[col].findOneAndUpdate(filter, { $set: body }, { new: true });
     if (!result) {

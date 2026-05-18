@@ -1441,7 +1441,7 @@ export default function App() {
               </div>
 
               <div className="mb-6 flex items-center justify-between">
-                <h4 className="text-lg font-black text-slate-900 flex items-center gap-3 tracking-tight"><CheckSquare className="w-6 h-6 text-indigo-500" /> 工作分解項目</h4>
+                <h4 className="text-lg font-black text-slate-900 flex items-center gap-3 tracking-tight"><CheckSquare className="w-6 h-6 text-indigo-500" /> 工作細項</h4>
               </div>
 
               {showRecurConfirm && (
@@ -1487,7 +1487,7 @@ export default function App() {
               <div className={`p-8 rounded-3xl border shadow-inner transition-colors ${editingChecklistId ? 'bg-indigo-50/50 border-indigo-200' : 'bg-slate-50 border-slate-200'}`}>
                 {editingChecklistId && (
                   <div className="flex items-center justify-between mb-4 bg-white px-4 py-2 rounded-xl border border-indigo-100 shadow-sm">
-                    <span className="text-xs font-black text-indigo-600 uppercase flex items-center gap-2"><Pencil className="w-4 h-4"/> 正在編輯分解項目...</span>
+                    <span className="text-xs font-black text-indigo-600 uppercase flex items-center gap-2"><Pencil className="w-4 h-4"/> 正在編輯工作細項...</span>
                     <button onClick={() => { setEditingChecklistId(null); setNewChecklistItem(""); }} className="text-slate-400 hover:text-rose-500 transition-colors p-1"><X className="w-4 h-4" /></button>
                   </div>
                 )}
