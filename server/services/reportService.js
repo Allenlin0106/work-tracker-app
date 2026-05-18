@@ -1,5 +1,5 @@
 const { models } = require('../db');
-const { readFilter } = require('./crudService');
+const { ownerFilter } = require('./crudService');
 const { z } = require('zod');
 const { isoDateString } = require('../schemas/common');
 
@@ -31,8 +31,8 @@ const buildReport = async (user, query) => {
   end.setHours(23, 59, 59, 999);
   const hideTagged = parsed.data.hideTagged === true || parsed.data.hideTagged === 'true' || parsed.data.hideTagged === '1';
 
-  const taskFilter = readFilter('tasks', user);
-  const logFilter = readFilter('logs', user);
+  const taskFilter = ownerFilter('tasks', user);
+  const logFilter = ownerFilter('logs', user);
 
   const [tasks, logs] = await Promise.all([
     models.tasks.find(taskFilter).lean(),

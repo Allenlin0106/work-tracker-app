@@ -7,20 +7,6 @@ const { schemas } = require('../schemas');
 // groups / tags 為共享的設定資料，不過濾
 const OWNED_COLLECTIONS = new Set(['tasks', 'logs']);
 
-// 權限矩陣：
-//   admin → 看全部、寫全部
-//   PM    → 看全部、僅寫自己 owner 的
-//   user  → 僅看自己 owner 的、僅寫自己 owner 的
-const canViewAll = (user) => user?.role === 'admin' || user?.role === 'PM';
-
-// readFilter：list / snapshot / report 等「讀取」場景用
-const readFilter = (col, user) => {
-  if (!OWNED_COLLECTIONS.has(col)) return {};
-  if (canViewAll(user)) return {};
-  return { owner: user.userId };
-};
-
-// ownerFilter：update / delete 等「寫入」場景用；PM 與 user 同樣只能寫自己 owner 的
 const ownerFilter = (col, user) => {
   if (!OWNED_COLLECTIONS.has(col)) return {};
   if (user?.role === 'admin') return {};
@@ -49,7 +35,7 @@ const buildCrudService = (broadcastChange) => {
 
   const list = async (col, user) => {
     assertCollection(col);
-    const docs = await models[col].find(readFilter(col, user)).lean();
+    const docs = await models[col].find(ownerFilter(col, user)).lean();
     return docs.map(stripDoc);
   };
 
@@ -122,7 +108,7 @@ const buildCrudService = (broadcastChange) => {
     if (broadcastChange) await broadcastChange(col, op, doc, ownerId);
   };
 
-  return { list, create, update, remove, broadcast, ownerFilter, readFilter, canViewAll, isOwned };
+  return { list, create, update, remove, broadcast, ownerFilter, isOwned };
 };
 
-module.exports = { buildCrudService, OWNED_COLLECTIONS, ownerFilter, readFilter, canViewAll, isOwned };
+module.exports = { buildCrudService, OWNED_COLLECTIONS, ownerFilter, isOwned };

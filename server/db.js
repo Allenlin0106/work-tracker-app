@@ -12,7 +12,7 @@ const connect = () =>
 const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
   passwordHash: { type: String, required: true },
-  role: { type: String, enum: ['admin', 'PM', 'user'], default: 'user' },
+  role: { type: String, enum: ['admin', 'user'], default: 'user' },
   disabled: { type: Boolean, default: false },
   createdBy: { type: mongoose.Schema.Types.ObjectId, default: null },
   // 登入失敗計數鎖定（BE-10）：超過閾值即鎖到 lockedUntil；成功登入後歸零
