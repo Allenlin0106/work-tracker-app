@@ -8,30 +8,18 @@ const { schemas } = require('../schemas');
 const OWNED_COLLECTIONS = new Set(['tasks', 'logs']);
 
 // 權限規則：
-//   task 讀：admin / owner / assignee.includes(self) / handler.includes(self)
-//   task 寫：admin / owner / handler.includes(self)
-//   log  讀/寫：跟著關聯 task 走（用 log.taskId 反查）
-const taskReadQuery = (user) => {
-  if (user?.role === 'admin') return {};
-  const uid = user.userId;
-  return { $or: [{ owner: uid }, { assignee: uid }, { handler: uid }] };
-};
+//   task 讀：所有登入者皆可（無 ownership 過濾）
+//   task 寫：admin / assignee.includes(self)
+//   log  讀：所有登入者皆可（同 task）
+//   log  寫：跟著關聯 task 的寫權限走（admin / assignee.includes(self) 對應的 task）
+const taskReadQuery = (/* user */) => ({});
 const taskWriteQuery = (user) => {
   if (user?.role === 'admin') return {};
-  const uid = user.userId;
-  return { $or: [{ owner: uid }, { handler: uid }] };
+  return { assignee: user.userId };
 };
 
-// readFilter / writeFilter 為 async：logs 需先查 user 可見/可寫的 task ids
-const readFilter = async (col, user) => {
-  if (col === 'tasks') return taskReadQuery(user);
-  if (col === 'logs') {
-    if (user?.role === 'admin') return {};
-    const tasks = await models.tasks.find(taskReadQuery(user), { _id: 1 }).lean();
-    return { taskId: { $in: tasks.map(t => t._id.toString()) } };
-  }
-  return {};
-};
+// readFilter / writeFilter 為 async：write 場景的 logs 需先查 user 可寫的 task ids
+const readFilter = async (/* col, user */) => ({});  // task / log 全部開放閱讀
 const writeFilter = async (col, user) => {
   if (col === 'tasks') return taskWriteQuery(user);
   if (col === 'logs') {
@@ -93,7 +81,7 @@ const buildCrudService = (broadcastChange) => {
     assertCollection(col);
     const filter = { _id: id, ...(await writeFilter(col, user)) };
     const body = sanitizeBody(rawBody);
-    delete body.owner; // 不允許透過 PATCH 改 owner
+    if (user?.role !== 'admin') delete body.owner; // 僅 admin 可透過 PATCH 改 owner
     const schema = schemas[col]?.update;
     if (schema) {
       const parsed = schema.safeParse(body);

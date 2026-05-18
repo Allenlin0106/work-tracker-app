@@ -18,10 +18,10 @@ const checklistItemSchema = z.object({
 // 建立 / 更新 task 共用核心欄位；POST 全必填，PATCH 全 optional（partial）
 const taskCore = {
   title: z.string().min(1).max(500),
-  // 負責人員：可查看任務內容（user id 陣列；舊資料可能是任意人名字串）
+  // 負責人員：可查看（任何登入者皆可看）+ 編輯任務（assignee.includes(self) 才能寫）
   assignee: z.array(z.string().max(200)).default([]),
-  // 處理人員：可編輯任務內容（user id 陣列）
-  handler: z.array(z.string().max(200)).default([]),
+  // owner：建立者；DB 仍存，但不再參與權限判定。僅 admin 可透過 PATCH 變更（schema 允許但後端會 gate）
+  owner: z.string().max(64).optional(),
   group: z.string().max(200).default(''),
   tags: z.array(z.string().max(200)).default([]),
   startDate: isoDateString.optional(),

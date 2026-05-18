@@ -171,7 +171,7 @@ export default function App() {
   const [hideTaggedInReport, setHideTaggedInReport] = useState(false);
 
   const INITIAL_TASK_FORM = {
-    title: '', group: '', assignee: [], handler: [], startDate: formatDate(new Date()),
+    title: '', group: '', assignee: [], startDate: formatDate(new Date()),
     endDate: formatDate(new Date(Date.now() + 86400000 * 7)),
     isRecurring: false, recurrenceType: 'weekly', recurrenceInterval: 1,
     tags: [],
@@ -322,13 +322,12 @@ export default function App() {
     return m;
   }, [users]);
 
-  // 與後端 services/crudService.js taskWriteQuery 一致：admin / owner / handler.includes(self) 可寫
+  // 與後端 services/crudService.js taskWriteQuery 一致：admin / assignee.includes(self) 可寫
   // 用於前端隱藏「編輯 / 刪除」按鈕，避免使用者打開 modal 後存檔被 404
   const canEditTask = (task) => {
     if (!task) return false;
     if (currentRole === 'admin') return true;
-    if (task.owner && String(task.owner) === currentUserId) return true;
-    if (Array.isArray(task.handler) && task.handler.includes(currentUserId)) return true;
+    if (Array.isArray(task.assignee) && task.assignee.includes(currentUserId)) return true;
     return false;
   };
 
@@ -1083,8 +1082,7 @@ export default function App() {
                             setTaskForm({
                               ...task,
                               tags: (task.tags || []).filter(tName => tags.some(t => t.name === tName)),
-                              assignee: Array.isArray(task.assignee) ? task.assignee : (task.assignee ? [task.assignee] : []),
-                              handler: Array.isArray(task.handler) ? task.handler : []
+                              assignee: Array.isArray(task.assignee) ? task.assignee : (task.assignee ? [task.assignee] : [])
                             });
                             setIsTaskModalOpen(true);
                           }} className="p-2.5 text-slate-300 hover:text-indigo-600 transition-all"><Pencil className="w-5 h-5" /></button>
@@ -1381,10 +1379,6 @@ export default function App() {
                      <div className="flex items-center gap-2 text-sm font-black text-slate-400 uppercase tracking-widest shrink-0 mt-0.5"><User className="w-5 h-5" /> 負責人員：</div>
                      <div className="text-base font-black text-slate-700 leading-relaxed">{displayAssignee(currentTaskInMemo.assignee, usersById)}</div>
                    </div>
-                   <div className="flex flex-wrap items-start gap-2">
-                     <div className="flex items-center gap-2 text-sm font-black text-slate-400 uppercase tracking-widest shrink-0 mt-0.5"><User className="w-5 h-5" /> 處理人員：</div>
-                     <div className="text-base font-black text-violet-700 leading-relaxed">{displayAssignee(currentTaskInMemo.handler, usersById)}</div>
-                   </div>
                 </div>
               </div>
 
@@ -1641,48 +1635,19 @@ export default function App() {
                 )}
               </div>
 
-              <div>
-                <label className="text-xs font-black text-slate-400 uppercase mb-3 block tracking-widest">處理人員 (可多選；具編輯權限)</label>
-
-                {taskForm.handler.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {taskForm.handler.map(h => {
-                      const u = usersById.get(h);
-                      return (
-                        <span key={h} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold border ${u ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
-                          {u ? u.username : `${h}（無此帳號）`}
-                          <button type="button" onClick={() => setTaskForm({...taskForm, handler: taskForm.handler.filter(x => x !== h)})} className="hover:text-rose-500 transition-colors"><X className="w-3.5 h-3.5" /></button>
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {users.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {users.map(u => {
-                      const isSelected = taskForm.handler.includes(u.id);
-                      return (
-                        <button
-                          key={u.id}
-                          type="button"
-                          onClick={() => setTaskForm(prev => ({
-                            ...prev,
-                            handler: isSelected ? prev.handler.filter(x => x !== u.id) : [...prev.handler, u.id]
-                          }))}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-bold border transition-all ${isSelected ? 'bg-violet-50 text-violet-700 border-violet-300 ring-2 ring-violet-200 shadow-sm' : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-violet-300'}`}
-                        >
-                          {u.username}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="text-sm font-bold text-slate-400 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                    尚無可選帳號。請至「帳號管理」建立。
-                  </div>
-                )}
-              </div>
+              {currentRole === 'admin' && editingTaskId && (
+                <div>
+                  <label className="text-xs font-black text-slate-400 uppercase mb-3 block tracking-widest">擁有者 (僅 admin 可變更)</label>
+                  <select
+                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-bold text-base shadow-sm focus:ring-4 focus:ring-indigo-100/50"
+                    value={taskForm.owner || ''}
+                    onChange={e => setTaskForm({...taskForm, owner: e.target.value})}
+                  >
+                    <option value="">未指定</option>
+                    {users.map(u => (<option key={u.id} value={u.id}>{u.username}</option>))}
+                  </select>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-6">
                 <div><label className="text-xs font-black text-slate-400 mb-3 block tracking-widest">開始日期</label><input type="date" className="w-full p-5 bg-slate-50 border rounded-2xl font-bold text-base shadow-sm" value={taskForm.startDate} onChange={e => setTaskForm({...taskForm, startDate: e.target.value})} /></div>
