@@ -9,13 +9,20 @@ const OWNED_COLLECTIONS = new Set(['tasks', 'logs']);
 
 // 權限規則：
 //   task 讀：所有登入者皆可（無 ownership 過濾）
-//   task 寫：admin / assignee.includes(self)
+//   task 編輯內容：admin / owner / assignee.includes(self)（含 checklist / progress / tags 等）
+//   task 改 title / 刪除：admin / owner（assignee 不能改 title 也不能刪）
 //   log  讀：所有登入者皆可（同 task）
-//   log  寫：跟著關聯 task 的寫權限走（admin / assignee.includes(self) 對應的 task）
+//   log  寫：跟著關聯 task 的編輯權限走
 const taskReadQuery = (/* user */) => ({});
 const taskWriteQuery = (user) => {
   if (user?.role === 'admin') return {};
-  return { assignee: user.userId };
+  const uid = user.userId;
+  return { $or: [{ owner: uid }, { assignee: uid }] };
+};
+// owner-level：可改 title、可刪除
+const taskOwnerQuery = (user) => {
+  if (user?.role === 'admin') return {};
+  return { owner: user.userId };
 };
 
 // readFilter / writeFilter 為 async：write 場景的 logs 需先查 user 可寫的 task ids
@@ -82,6 +89,11 @@ const buildCrudService = (broadcastChange) => {
     const filter = { _id: id, ...(await writeFilter(col, user)) };
     const body = sanitizeBody(rawBody);
     if (user?.role !== 'admin') delete body.owner; // 僅 admin 可透過 PATCH 改 owner
+    // task：assignee 雖能編輯內容，但不能改 title。先抓出資源確認非 owner 就 strip title
+    if (col === 'tasks' && user?.role !== 'admin' && body.title !== undefined) {
+      const existing = await models.tasks.findById(id, { owner: 1 }).lean();
+      if (existing && String(existing.owner) !== user.userId) delete body.title;
+    }
     const schema = schemas[col]?.update;
     if (schema) {
       const parsed = schema.safeParse(body);
@@ -114,7 +126,9 @@ const buildCrudService = (broadcastChange) => {
 
   const remove = async (col, user, id) => {
     assertCollection(col);
-    const filter = { _id: id, ...(await writeFilter(col, user)) };
+    // task 刪除要 owner-level；其他 collection 沿用 writeFilter（log 走 task write，groups/tags 無 owner）
+    const ownerScopedFilter = col === 'tasks' ? taskOwnerQuery(user) : await writeFilter(col, user);
+    const filter = { _id: id, ...ownerScopedFilter };
     const result = await models[col].findOneAndDelete(filter);
     if (!result) {
       const e = new Error('資源不存在或無權限');
@@ -133,7 +147,7 @@ const buildCrudService = (broadcastChange) => {
     if (broadcastChange) await broadcastChange(col, op, doc, ownerId);
   };
 
-  return { list, create, update, remove, broadcast, readFilter, writeFilter, taskReadQuery, taskWriteQuery, isOwned };
+  return { list, create, update, remove, broadcast, readFilter, writeFilter, taskReadQuery, taskWriteQuery, taskOwnerQuery, isOwned };
 };
 
-module.exports = { buildCrudService, OWNED_COLLECTIONS, readFilter, writeFilter, taskReadQuery, taskWriteQuery, isOwned };
+module.exports = { buildCrudService, OWNED_COLLECTIONS, readFilter, writeFilter, taskReadQuery, taskWriteQuery, taskOwnerQuery, isOwned };

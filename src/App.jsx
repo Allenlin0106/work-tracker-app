@@ -322,13 +322,21 @@ export default function App() {
     return m;
   }, [users]);
 
-  // 與後端 services/crudService.js taskWriteQuery 一致：admin / assignee.includes(self) 可寫
-  // 用於前端隱藏「編輯 / 刪除」按鈕，避免使用者打開 modal 後存檔被 404
+  // 與後端 services/crudService.js taskWriteQuery 一致：admin / owner / assignee.includes(self) 可編輯內容
+  // 用於前端隱藏「編輯」入口
   const canEditTask = (task) => {
     if (!task) return false;
     if (currentRole === 'admin') return true;
+    if (task.owner && String(task.owner) === currentUserId) return true;
     if (Array.isArray(task.assignee) && task.assignee.includes(currentUserId)) return true;
     return false;
+  };
+
+  // 與後端 taskOwnerQuery 一致：admin / owner 才能刪除 task 或改 task title
+  const canOwnTask = (task) => {
+    if (!task) return false;
+    if (currentRole === 'admin') return true;
+    return task.owner && String(task.owner) === currentUserId;
   };
 
   // 篩選器「負責人員」chips 的資料來源：只列現有帳號（舊字串任務不再被篩，符合「不追溯」決策）
@@ -905,7 +913,7 @@ export default function App() {
         </div>
         <div className="flex items-center gap-4">
           <div className="flex bg-slate-100 p-1.5 rounded-xl shadow-inner border border-slate-200">
-            {['list', 'gantt', 'weekly', 'monthly', 'logs', ...(currentRole === 'admin' ? ['accounts'] : [])].map(m => (
+            {['list', 'gantt', 'weekly', 'monthly', 'logs', 'accounts'].map(m => (
               <button
                 key={m}
                 onClick={() => { setViewMode(m); setFilters(prev => ({ ...prev, statuses: [] })); }}
@@ -927,8 +935,8 @@ export default function App() {
       </header>
 
       <main className="flex-1 p-4 md:p-8 max-w-[1600px] mx-auto w-full flex flex-col overflow-hidden">
-        {viewMode === 'accounts' && currentRole === 'admin' ? (
-          <AccountsPage currentUserId={currentUserId} />
+        {viewMode === 'accounts' ? (
+          <AccountsPage currentUserId={currentUserId} currentRole={currentRole} />
         ) : viewMode === 'logs' ? (
           <LogsQueryPage logs={logs} tasks={tasks} />
         ) : (
@@ -1075,7 +1083,7 @@ export default function App() {
                         </td>
                         <td className="px-8 py-6"><div className="flex items-center gap-4"><div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden shadow-inner"><div className={`h-full transition-all duration-700 ${status.value === 'delayed' ? 'bg-rose-500' : 'bg-indigo-600'}`} style={{ width: `${task.progress}%` }}></div></div><span className="text-xs font-black text-slate-400">{task.progress}%</span></div></td>
                         <td className="px-10 py-6 text-right flex gap-2 justify-end opacity-0 group-hover/row:opacity-100 transition-all">
-                          {canEditTask(task) && (<>
+                          {canEditTask(task) && (
                           <button onClick={(e) => {
                             e.stopPropagation();
                             setEditingTaskId(task.id);
@@ -1086,8 +1094,10 @@ export default function App() {
                             });
                             setIsTaskModalOpen(true);
                           }} className="p-2.5 text-slate-300 hover:text-indigo-600 transition-all"><Pencil className="w-5 h-5" /></button>
+                          )}
+                          {canOwnTask(task) && (
                           <button onClick={(e) => { e.stopPropagation(); setTaskToDelete(task); }} className="p-2.5 text-slate-300 hover:text-rose-500 transition-all"><Trash2 className="w-5 h-5" /></button>
-                          </>)}
+                          )}
                         </td>
                       </tr>
                     );
@@ -1516,8 +1526,18 @@ export default function App() {
             <form onSubmit={handleSaveTask} className="p-12 space-y-8 scrollbar-thin overflow-y-auto max-h-[80vh]">
               {formError && <div className="p-5 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3 text-rose-600 text-sm font-black animate-in fade-in slide-in-from-top-2"><AlertCircle className="w-5 h-5" /> {formError}</div>}
               <div>
-                <label className="text-xs font-black text-slate-400 uppercase mb-3 block tracking-widest">工作標題</label>
-                <input className="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-bold text-base shadow-sm focus:ring-4 focus:ring-indigo-100/50 transition-all" value={taskForm.title} onChange={e => setTaskForm({...taskForm, title: e.target.value})} />
+                <label className="text-xs font-black text-slate-400 uppercase mb-3 block tracking-widest">
+                  工作標題
+                  {editingTaskId && !canOwnTask(tasks.find(t => t.id === editingTaskId)) && (
+                    <span className="ml-2 text-[10px] text-slate-400 normal-case tracking-normal">（僅 owner / admin 可修改）</span>
+                  )}
+                </label>
+                <input
+                  className="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-bold text-base shadow-sm focus:ring-4 focus:ring-indigo-100/50 transition-all read-only:bg-slate-100 read-only:text-slate-400 read-only:cursor-not-allowed"
+                  value={taskForm.title}
+                  onChange={e => setTaskForm({...taskForm, title: e.target.value})}
+                  readOnly={!!editingTaskId && !canOwnTask(tasks.find(t => t.id === editingTaskId))}
+                />
               </div>
               
               <div>

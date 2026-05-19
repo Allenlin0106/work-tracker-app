@@ -10,7 +10,9 @@ const Field = ({ label, children }) => (
   </label>
 );
 
-export default function AccountsPage({ currentUserId }) {
+export default function AccountsPage({ currentUserId, currentRole }) {
+  const isAdmin = currentRole === 'admin';
+
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -24,7 +26,13 @@ export default function AccountsPage({ currentUserId }) {
   const [resetFor, setResetFor] = useState(null);
   const [resetPw, setResetPw] = useState('');
 
+  // user 自己改密碼
+  const [selfPw, setSelfPw] = useState({ oldPassword: '', password: '' });
+  const [selfBusy, setSelfBusy] = useState(false);
+  const [selfMsg, setSelfMsg] = useState('');
+
   const refresh = async () => {
+    if (!isAdmin) { setLoading(false); return; } // user 不能列出別人
     setLoading(true);
     setErr('');
     try {
@@ -37,7 +45,24 @@ export default function AccountsPage({ currentUserId }) {
     }
   };
 
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => { refresh(); }, [isAdmin]);
+
+  const handleSelfChangePassword = async (e) => {
+    e.preventDefault();
+    setErr(''); setSelfMsg('');
+    if (!selfPw.oldPassword) { setErr('請輸入舊密碼'); return; }
+    if (!isStrongPassword(selfPw.password)) { setErr(PASSWORD_HINT); return; }
+    setSelfBusy(true);
+    try {
+      await usersApi.resetPassword(currentUserId, selfPw.password, selfPw.oldPassword);
+      setSelfPw({ oldPassword: '', password: '' });
+      setSelfMsg('密碼已更新');
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSelfBusy(false);
+    }
+  };
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -114,6 +139,52 @@ export default function AccountsPage({ currentUserId }) {
       setBusyId(null);
     }
   };
+
+  if (!isAdmin) {
+    return (
+      <div className="max-w-md mx-auto p-6 space-y-6">
+        <div className="flex items-center gap-3">
+          <UserCog className="w-7 h-7 text-indigo-600" />
+          <h2 className="text-2xl font-black text-slate-800">修改我的密碼</h2>
+        </div>
+
+        {err && <div className="p-3 bg-red-50 text-red-700 text-sm rounded-xl border border-red-200">{err}</div>}
+        {selfMsg && <div className="p-3 bg-emerald-50 text-emerald-700 text-sm rounded-xl border border-emerald-200">{selfMsg}</div>}
+
+        <form onSubmit={handleSelfChangePassword} className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-4">
+          <Field label="舊密碼">
+            <input
+              type="password"
+              autoComplete="current-password"
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              value={selfPw.oldPassword}
+              onChange={e => setSelfPw(p => ({ ...p, oldPassword: e.target.value }))}
+              required
+            />
+          </Field>
+          <Field label="新密碼">
+            <input
+              type="password"
+              autoComplete="new-password"
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              value={selfPw.password}
+              onChange={e => setSelfPw(p => ({ ...p, password: e.target.value }))}
+              required
+            />
+          </Field>
+          <p className="text-xs text-slate-500">{PASSWORD_HINT}</p>
+          <button
+            type="submit"
+            disabled={selfBusy}
+            className="w-full bg-indigo-600 text-white rounded-xl py-2 text-sm font-bold hover:bg-indigo-700 disabled:opacity-60 flex items-center justify-center gap-2"
+          >
+            {selfBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+            更新密碼
+          </button>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto p-6 space-y-6">

@@ -47,10 +47,11 @@ export const usersApi = {
     headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(payload),
   }).then(handleJson),
-  resetPassword: (id, password) => fetch(`${API_BASE}/users/${id}/reset-password`, {
+  // admin 改他人密碼不需 oldPassword；user 改自己必須帶 oldPassword
+  resetPassword: (id, password, oldPassword) => fetch(`${API_BASE}/users/${id}/reset-password`, {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ password }),
+    body: JSON.stringify(oldPassword !== undefined ? { password, oldPassword } : { password }),
   }).then(handleJson),
   disable: (id) => fetch(`${API_BASE}/users/${id}/disable`, {
     method: 'POST',

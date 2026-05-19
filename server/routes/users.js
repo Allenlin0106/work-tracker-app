@@ -29,6 +29,32 @@ router.get('/users/options', requireAuth, async (req, res, next) => {
   }
 });
 
+// 改密碼：admin 改他人不需舊密碼；user 改自己需提供舊密碼驗證。
+// 必須放在 router.use('/users', requireAdmin) 之前，否則 user 會被 admin gate 擋。
+router.post('/users/:id/reset-password', requireAuth, async (req, res, next) => {
+  try {
+    const isAdmin = req.user?.role === 'admin';
+    const isSelf = req.user?.userId === req.params.id;
+    if (!isAdmin && !isSelf) return res.status(403).json({ error: '無權限變更他人密碼' });
+    const { password, oldPassword } = req.body || {};
+    if (!validatePassword(password)) return res.status(400).json({ error: PASSWORD_RULE_MSG });
+    const target = await User.findById(req.params.id);
+    if (!target) return res.status(404).json({ error: '使用者不存在' });
+    if (!isAdmin) {
+      // self 改自己：強制驗證舊密碼
+      if (!oldPassword) return res.status(400).json({ error: '請提供舊密碼' });
+      const ok = await bcrypt.compare(oldPassword, target.passwordHash);
+      if (!ok) return res.status(400).json({ error: '舊密碼錯誤' });
+    }
+    target.passwordHash = await bcrypt.hash(password, 12);
+    await target.save();
+    logAudit(isAdmin && !isSelf ? 'user.reset_password' : 'user.change_own_password', req.user.userId, { targetId: target._id.toString() });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // 注意：本 router 在 server/index.js 是 mount 在 '/api'（非 '/api/users'），所以
 // 不能用 path-less `router.use(requireAdmin)` —— 那會把 admin gate 套到所有經過
 // 此 router 的請求（如 /api/tasks），導致非 admin 連 POST tasks 都被擋成 Admin only。
@@ -86,22 +112,6 @@ router.patch('/users/:id', async (req, res, next) => {
     await target.save();
     logAudit('user.update', req.user.userId, { targetId: target._id.toString(), role: target.role });
     res.json(toUserDto(target));
-  } catch (err) {
-    next(err);
-  }
-});
-
-// 重設密碼
-router.post('/users/:id/reset-password', async (req, res, next) => {
-  try {
-    const { password } = req.body || {};
-    if (!validatePassword(password)) return res.status(400).json({ error: PASSWORD_RULE_MSG });
-    const target = await User.findById(req.params.id);
-    if (!target) return res.status(404).json({ error: '使用者不存在' });
-    target.passwordHash = await bcrypt.hash(password, 12);
-    await target.save();
-    logAudit('user.reset_password', req.user.userId, { targetId: target._id.toString() });
-    res.json({ ok: true });
   } catch (err) {
     next(err);
   }
