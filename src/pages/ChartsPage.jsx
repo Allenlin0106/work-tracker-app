@@ -1,19 +1,59 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { BarChart3, TrendingUp, Users } from 'lucide-react';
+import { BarChart3, TrendingUp, Users, Layers } from 'lucide-react';
 import { buildGroupWorkload, buildWeeklyProgress, buildAssigneeWorkload } from '../lib/chartData';
 
 const EmptyState = ({ text }) => (
   <div className="py-12 text-center text-slate-400 font-bold">{text}</div>
 );
 
+const GroupChip = ({ label, active, onClick, dotClass }) => (
+  <button
+    onClick={onClick}
+    className={`flex items-center gap-2 px-5 py-2 rounded-full border text-sm font-black transition-all ${
+      active
+        ? 'bg-indigo-50 border-indigo-300 text-indigo-700 ring-2 ring-indigo-100 ring-offset-1 shadow-sm'
+        : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50 shadow-sm'
+    }`}
+  >
+    {dotClass && <span className={`w-2.5 h-2.5 rounded-full ${dotClass}`} />}
+    {label}
+  </button>
+);
+
 export default function ChartsPage({ tasks, logs, groups, usersById }) {
-  const groupData = useMemo(() => buildGroupWorkload(tasks, groups), [tasks, groups]);
-  const weeklyData = useMemo(() => buildWeeklyProgress(tasks, 12), [tasks]);
-  const assigneeData = useMemo(() => buildAssigneeWorkload(tasks, logs, usersById), [tasks, logs, usersById]);
+  const [selectedGroup, setSelectedGroup] = useState('');
+
+  const filteredTasks = useMemo(
+    () => (selectedGroup ? tasks.filter(t => t.group === selectedGroup) : tasks),
+    [tasks, selectedGroup]
+  );
+
+  const groupData = useMemo(() => buildGroupWorkload(filteredTasks, groups), [filteredTasks, groups]);
+  const weeklyData = useMemo(() => buildWeeklyProgress(filteredTasks, 12), [filteredTasks]);
+  const assigneeData = useMemo(() => buildAssigneeWorkload(filteredTasks, logs, usersById), [filteredTasks, logs, usersById]);
 
   return (
     <div className="space-y-8 p-4 md:p-8 max-w-[1600px] mx-auto w-full">
+      <section className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+        <div className="flex items-center gap-3 mb-4">
+          <Layers className="w-5 h-5 text-slate-400" />
+          <span className="text-xs font-black text-slate-400 uppercase tracking-widest">依執行小組篩選</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <GroupChip label="全部" active={!selectedGroup} onClick={() => setSelectedGroup('')} />
+          {groups.map(g => (
+            <GroupChip
+              key={g.id}
+              label={g.name}
+              active={selectedGroup === g.name}
+              onClick={() => setSelectedGroup(g.name)}
+              dotClass={g.color?.active || 'bg-slate-400'}
+            />
+          ))}
+        </div>
+      </section>
+
       <section className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
         <h2 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-3">
           <BarChart3 className="w-6 h-6 text-indigo-600" /> 小組工作量
