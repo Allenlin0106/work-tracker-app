@@ -17,6 +17,7 @@ import { compressImage } from './lib/imageUtils';
 import { callRecurTask } from './lib/recurrence';
 import AccountsPage from './pages/AccountsPage';
 import LogsQueryPage from './pages/LogsQueryPage';
+import ChartsPage from './pages/ChartsPage';
 import { useToast } from './components/ToastProvider';
 
 // --- 1. 核心常數定義 ---
@@ -913,13 +914,13 @@ export default function App() {
         </div>
         <div className="flex items-center gap-4">
           <div className="flex bg-slate-100 p-1.5 rounded-xl shadow-inner border border-slate-200">
-            {['list', 'gantt', 'weekly', 'monthly', 'logs', 'accounts'].map(m => (
+            {['list', 'gantt', 'weekly', 'monthly', 'charts', 'logs', 'accounts'].map(m => (
               <button
                 key={m}
                 onClick={() => { setViewMode(m); setFilters(prev => ({ ...prev, statuses: [] })); }}
                 className={`px-6 py-2 rounded-lg text-base font-bold transition-all ${viewMode === m ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
               >
-                {m === 'list' ? '列表' : m === 'gantt' ? '甘特圖' : m === 'weekly' ? '週報' : m === 'monthly' ? '月報' : m === 'logs' ? '日誌查詢' : m === 'accounts' ? '帳號管理' : ''}
+                {m === 'list' ? '列表' : m === 'gantt' ? '甘特圖' : m === 'weekly' ? '週報' : m === 'monthly' ? '月報' : m === 'charts' ? '分析' : m === 'logs' ? '日誌查詢' : m === 'accounts' ? '帳號管理' : ''}
               </button>
             ))}
           </div>
@@ -939,6 +940,8 @@ export default function App() {
           <AccountsPage currentUserId={currentUserId} currentRole={currentRole} />
         ) : viewMode === 'logs' ? (
           <LogsQueryPage logs={logs} tasks={tasks} />
+        ) : viewMode === 'charts' ? (
+          <ChartsPage tasks={tasks} logs={logs} groups={groups} usersById={usersById} />
         ) : (
         <>
         <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-8 mb-8">
