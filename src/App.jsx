@@ -958,7 +958,9 @@ export default function App() {
             )}
             <div className="flex items-center gap-2">
               <button onClick={() => setIsManagingTags(true)} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-400 hover:text-indigo-600 transition-all shadow-sm" title="標籤管理"><Tag className="w-6 h-6" /></button>
-              <button onClick={() => setIsManagingGroups(true)} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-400 hover:text-indigo-600 transition-all shadow-sm" title="小組管理"><Settings2 className="w-6 h-6" /></button>
+              {currentRole === 'admin' && (
+                <button onClick={() => setIsManagingGroups(true)} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-400 hover:text-indigo-600 transition-all shadow-sm" title="小組管理"><Settings2 className="w-6 h-6" /></button>
+              )}
             </div>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
