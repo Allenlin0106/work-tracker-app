@@ -33,11 +33,13 @@ export const buildWeeklyProgress = (tasks, weeks = 12) => {
 
   tasks.forEach(t => {
     const created = t.createdAt ? new Date(t.createdAt) : null;
-    const updated = t.updatedAt ? new Date(t.updatedAt) : null;
+    // 優先用後端寫入的 completedAt；舊資料無此欄位則 fallback updatedAt（行為等同改動前）
+    const completedSource = t.completedAt ?? t.updatedAt;
+    const completed = completedSource ? new Date(completedSource) : null;
     const done = isDone(t);
     buckets.forEach(b => {
       if (created && created >= b.start && created < b.end) b.created += 1;
-      if (done && updated && updated >= b.start && updated < b.end) b.completed += 1;
+      if (done && completed && completed >= b.start && completed < b.end) b.completed += 1;
     });
   });
 

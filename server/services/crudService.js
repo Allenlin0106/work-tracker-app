@@ -77,6 +77,10 @@ const buildCrudService = (broadcastChange) => {
       Object.assign(body, parsed.data);
     }
     if (isOwned(col)) body.owner = user.userId;
+    // task：建立時 progress 已達 100 → 同步寫入 completedAt（罕見，但保持資料一致性）
+    if (col === 'tasks' && (body.progress ?? 0) >= 100 && !body.completedAt) {
+      body.completedAt = new Date();
+    }
     const doc = await models[col].create(body);
     logAudit('crud.create', user?.userId, { col, docId: doc._id.toString() });
     const dto = toDoc(doc);
@@ -111,6 +115,14 @@ const buildCrudService = (broadcastChange) => {
         if (parsed.data[k] !== undefined) body[k] = parsed.data[k];
         else delete body[k]; // input 給了 zod 無法接受的 key（會被 strip）→ 不寫進 DB
       }
+    }
+    // task：progress 跨越 100 邊界 → 寫入/清空 completedAt（zod parse 後注入，避開 schema strip）
+    if (col === 'tasks' && body.progress !== undefined) {
+      const existing = await models.tasks.findById(id, { progress: 1 }).lean();
+      const wasDone = (existing?.progress ?? 0) >= 100;
+      const isDone = body.progress >= 100;
+      if (!wasDone && isDone) body.completedAt = new Date();
+      else if (wasDone && !isDone) body.completedAt = null;
     }
     const result = await models[col].findOneAndUpdate(filter, { $set: body }, { new: true });
     if (!result) {

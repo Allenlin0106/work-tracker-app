@@ -29,7 +29,8 @@ export default function ChartsPage({ tasks, logs, groups, usersById }) {
     [tasks, selectedGroup]
   );
 
-  const groupData = useMemo(() => buildGroupWorkload(filteredTasks, groups), [filteredTasks, groups]);
+  // 「小組工作量」用於跨組對比，不套 group filter（與其他圖不同；選單一 group 時若 filter 會塌成一條 bar 失去意義）
+  const groupData = useMemo(() => buildGroupWorkload(tasks, groups), [tasks, groups]);
   const weeklyData = useMemo(() => buildWeeklyProgress(filteredTasks, 12), [filteredTasks]);
   const assigneeData = useMemo(() => buildAssigneeWorkload(filteredTasks, logs, usersById), [filteredTasks, logs, usersById]);
   const statusData = useMemo(() => buildStatusBreakdown(filteredTasks, logs), [filteredTasks, logs]);
@@ -61,6 +62,7 @@ export default function ChartsPage({ tasks, logs, groups, usersById }) {
       <section className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
         <h2 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-3">
           <BarChart3 className="w-6 h-6 text-indigo-600" /> 小組工作量
+          <span className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-2">（不受篩選影響，跨組對比）</span>
         </h2>
         {groupData.length > 0 ? (
           <ResponsiveContainer width="100%" height={320}>
