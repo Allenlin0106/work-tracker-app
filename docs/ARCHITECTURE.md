@@ -1,7 +1,7 @@
 # Work Tracker App 架構分析（多層式架構優缺點）
 
-> 評估版本：對應 git branch `claude/verify-content-ZxftO`（commit `33309f5`）
-> 評估日：2026-05-14（v1.1：2026-05-15，反映 Phase 1 重構與 Phase 2 RBAC）
+> 評估版本：對應 git branch `claude/verify-content-ZxftO`（commit `370df3e`）
+> 評估日：2026-05-14（v1.1：2026-05-15；v1.2：2026-06-03，反映 service 層落地、Zod schema、具名 router、前端 lib/components/hooks 拆分、charts 分析頁、groups admin gate、task.completedAt）
 > 範圍：應用層 + 基礎設施層 + 跨切面（observability / testability / scalability）
 
 ---
@@ -84,6 +84,36 @@
 | `nginx.conf` | 48 | TLS + 反代 + SPA fallback + 安全標頭 |
 | `docker-compose.yml` | 44 | 3 服務、internal network、env 注入 |
 | `backup.sh` | – | mongodump + 30 天輪替 |
+
+### 2.3.2 v1.2 增量（service 層、Zod schema、具名 router、前端進一步拆分、charts、admin gate）
+
+**後端新增 / 重構（v1.1 後）**
+
+| 檔 | 行數（約） | 職責 |
+|---|---|---|
+| `routes/tasks.js` `routes/logs.js` `routes/groups.js` `routes/tags.js` | 30–44 | 取代 v1.1 `routes/crud.js` 的動態 forEach，改為具名 router；`groups` POST/PATCH/DELETE 加 `requireAdmin` gate（commit `0412326`） |
+| `routes/reports.js` | 19 | domain endpoint：報表計算移自前端 `reportData` |
+| `services/crudService.js` | 153 | 通用 CRUD + ownership filter + Zod 驗證 + 廣播；v1.2 加 task.progress 跨越 100 時寫入/清空 `completedAt`（commit `370df3e`） |
+| `services/reportService.js` | 76 | 報表 aggregation |
+| `services/taskService.js` | 62 | 循環任務執行（取代前端 `executeRecurrence`） |
+| `schemas/{task,log,group,tag}.schema.js` + `schemas/common.js` | 5 檔 | Zod validation（route 層在 service 內 safeParse） |
+
+**前端新增 / 重構（v1.1 後）**
+
+| 檔 | 行數（約） | 職責 |
+|---|---|---|
+| `App.jsx` | 1845 | 略減；UI 殼仍未進一步拆 |
+| `lib/dateUtils.js` `lib/taskStatus.js` `lib/recurrence.js` `lib/reportData.js` `lib/imageUtils.js` | 5 檔 | 從 App.jsx 抽出的純函式 / 邏輯（v1.1 路線圖 7.2 已完成項） |
+| `lib/chartData.js` | 80+ | charts 5 個純函式：`buildGroupWorkload` / `buildWeeklyProgress` / `buildAssigneeWorkload` / `buildStatusBreakdown` / `buildUpcomingDeadlines`（commit `40b9778`） |
+| `pages/ChartsPage.jsx` | 200+ | 分析 view：5 圖（小組工作量 / 週進度 / 負擔分布 / 完成率圓餅 / 即將到期），含 group filter chips；「小組工作量」為跨組對比，刻意不套 filter（commit `370df3e`） |
+| `components/{ModalShell,TextField,ColorPicker,ToastProvider,Spinner}.jsx` | 5 檔 | 通用 UI 元件 |
+| `hooks/useTask.js` | – | task 更新封裝 |
+
+**新依賴**：`recharts ^3.8.1`（bundle 自 294 kB → 701 kB；gzip 83 kB → 203 kB）。
+
+**權限模式變化**：
+- groups CRUD 寫入路徑（POST/PATCH/DELETE）已限 admin；GET 仍開放（task 表單下拉需要）。
+- task `completedAt` 由後端在 service 層自動寫入，前端不傳；圖表「週進度」優先消費此欄位，舊資料 fallback `updatedAt`。
 
 ---
 
@@ -194,7 +224,7 @@
 | 項目 | 狀態 | 動作 |
 |---|---|---|
 | 後端模組化 | ✅ 完成（commit `045d24b`） | `server/{config,db,lib,middleware,routes,sockets}.js` |
-| 前端基礎拆分 | ⚠️ 部分（`lib/` + `pages/` 已抽） | 仍需從 `App.jsx` 抽 components/hooks；`reportData` / `executeRecurrence` / `compressImage` 提為 hook 或 util |
+| 前端基礎拆分 | ✅ 大致完成（v1.2） | `lib/` 9 檔、`pages/` 3 檔、`components/` 5 檔、`hooks/` 1 檔；`reportData` / `executeRecurrence` / `compressImage` 皆已外移 |
 | 加入最小測試 | ❌ 待辦 | vitest（前端）+ supertest（後端 routes 煙霧測試） |
 | 引入 lint | ❌ 待辦 | eslint + prettier，配合 CI（SECURITY-AUDIT L1） |
 
@@ -203,8 +233,8 @@
 | 項目 | 狀態 | 動作 | 相關 backlog |
 |---|---|---|---|
 | 資料擁有權 + RBAC | ✅ 完成（commit `de56c52`） | `tasks.owner` / `logs.owner` + admin/user + AccountsPage | Security M1 |
-| 報表 / 循環任務 domain endpoint | ❌ 待辦 | 把 `reportData` 與 `executeRecurrence` 上推到後端 `/api/reports`、`/api/tasks/:id/recur` | — |
-| Schema 強型別 | ❌ 待辦 | 對核心 collections（tasks / logs）改用 `strict:true` schema + Zod 驗證 | — |
+| 報表 / 循環任務 domain endpoint | ✅ 完成（v1.2） | `routes/reports.js` + `services/reportService.js`；`services/taskService.js` 處理循環任務 | — |
+| Schema 強型別 | ✅ 完成（v1.2） | `server/schemas/{task,log,group,tag}.schema.js`（Zod）；service 層 safeParse | — |
 | Socket.io 改增量推播 | ❌ 待辦（v1.1 已加房間分流，仍是整集合送出） | `emit('tasks:patch', { id, change })` 取代全集合 broadcast | — |
 | Mongo per-app user | ❌ 待辦 | 從 root 切換為 readWrite 限定 DB 帳號 | Security M5 |
 | 前端 App.jsx 大幅拆分 | ❌ 待辦 | 抽出任務列表、甘特、週/月報、詳情視窗為獨立 component | — |
@@ -220,13 +250,17 @@
 
 ---
 
-## 8. 結論（v1.1 更新）
+## 8. 結論（v1.2 更新）
 
-- **本專案已從「物理 3-tier、邏輯 1-tier」演進為「物理 3-tier、邏輯部分分層」**：後端 Phase 1 重構落地（12 個模組）、Phase 2 RBAC 完成（owner 過濾 + 帳號管理），可維護性紅利開始兌現。
-- **目前最大痛點為「前端 App.jsx 仍 1865 行」**：是下一波 ROI 最高的拆分對象（建議任務列表 / 甘特 / 週月報 / 詳情視窗各成 component）。
-- **後端仍是 thin DB proxy**：缺 domain endpoints（reports / recurrence）；補上的時機建議與「Schema 強型別」綁定一起做。
+- **架構演進**：v1.1 「物理 3-tier、邏輯部分分層」→ v1.2 **「物理 3-tier、邏輯多層」**。後端已具備 routes → services → repositories（mongoose model 直用，仍非獨立 repo 層）三層；前端 `App.jsx` 內 lib/pages/components/hooks 邊界已建立。
+- **本輪 v1.2 主要成果**：
+  - 後端：通用 CRUD → 具名 router；service 層浮出；Zod schema 落地；report/recurrence domain endpoint；groups admin gate；task.completedAt 自動寫入。
+  - 前端：分析（charts）頁含 5 圖；recharts 引入；lib/components/hooks 多檔抽出。
+- **剩餘最大痛點**：`App.jsx` 仍 1845 行（任務列表 / 甘特 / 週月報 / 詳情視窗仍未拆 component），是下一波 ROI 最高的拆分對象。
+- **後端剩餘缺口**：仍無獨立 repository 層；`flexSchema` 仍 `strict:false`（Zod 已在 service 層把關，DB 層仍寬鬆）；socket 廣播仍非真正 patch（v1.1 只達房間分流）。
+- **新引入的 trade-off**：recharts 使 bundle 從 294 kB → 701 kB（gzip 83 → 203 kB）。未做 code-split。
 - **不建議「為了多層而多層」**：微服務、CQRS、Event Sourcing 等對目前規模仍過度工程。
-- **與安全 backlog 對齊**：M1 已完成；下一波路線圖（前端拆分、reports endpoint、Mongo per-app user）與 `docs/SECURITY-AUDIT.md` Phase 3 / `docs/DB-EVALUATION.md` 中期項目重疊，建議合併規劃。
+- **與安全 backlog 對齊**：M1 已完成、admin gate 進一步擴及 groups；剩餘路線圖（Mongo per-app user、CI/CD、metrics）與 `docs/SECURITY-AUDIT.md` Phase 3 / `docs/DB-EVALUATION.md` 中期項目重疊。
 
 ---
 
@@ -236,3 +270,4 @@
 |---|---|---|
 | 2026-05-14 | 1.0 | 首版架構分析；對映 Phase 1 安全補強後現況 |
 | 2026-05-15 | 1.1 | 反映 Phase 1 後端模組化（commit `045d24b`）與 Phase 2 RBAC（commit `de56c52`）；新增 `src/pages/` 與 `src/lib/`；7.1 / 7.2 路線圖標示完成項；結論更新「物理 3-tier、邏輯部分分層」 |
+| 2026-06-03 | 1.2 | 反映 service 層落地、Zod schema、具名 router（tasks/logs/groups/tags/reports）、前端 lib/components/hooks 進一步拆分、分析（charts）頁含 5 圖 + recharts、groups CRUD admin gate（commit `0412326`）、task.completedAt 自動寫入（commit `370df3e`）；新增 2.3.2 v1.2 增量章節；7.x 路線圖更新；結論升級為「物理 3-tier、邏輯多層」 |
